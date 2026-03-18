@@ -22,17 +22,12 @@ metadata:
 ## 使用方式
 
 ```
-/cobol-spec <spool_file> [program_name]      # 單檔模式
-/cobol-spec --batch <directory_or_files>      # 批次模式
+/cobol-spec your_spool.txt                    # 單檔模式
+/cobol-spec --batch /path/to/folder           # 批次模式
+/cobol-spec --batch a.txt b.txt c.txt         # 多檔批次處理
 ```
 
-**範例：**
-```
-/cobol-spec <spool>.txt <program>
-/cobol-spec <spool>.txt               ← 自動選擇最大的 COBOL 程式
-/cobol-spec --batch /path/to/folder    ← 整資料夾批次處理
-/cobol-spec --batch a.txt b.txt c.txt  ← 多檔批次處理
-```
+程式會自動偵測 spool 內的 COBOL 程式，若有多支會請你選擇。
 
 ## 可用腳本
 

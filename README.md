@@ -31,7 +31,7 @@ cp agents/*.md ~/.kiro/agents/
 ## 使用
 
 ```
-/cobol-spec <spool>.txt [program_name]      # 單檔模式
+/cobol-spec your_spool.txt                  # 單檔模式
 /cobol-spec --batch /path/to/folder         # 批次模式
 ```
 

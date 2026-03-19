@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 """Batch inventory scanner for AS/400 spool files.
 
-Scans one or more .txt spool files (or a directory), runs spool_splitter
-on each, and produces a consolidated JSON inventory of all programs and
-DDS components found.
+Scans one or more .txt spool files (or a directory), runs format_normalizer
+and spool_splitter on each, and produces a consolidated JSON inventory of
+all programs and DDS components found.
+
+Integrates format_normalizer to handle:
+  - DSPFFD query reports (parsed directly to DDS JSON)
+  - MSGFILE exports (flagged, not parsed as spool)
+  - Multi-member files (all members listed in inventory)
+  - Encoding and format metadata in output
 
 Usage:
     python3 batch_inventory.py /path/to/folder
@@ -16,15 +22,75 @@ import os
 import sys
 
 # ---------------------------------------------------------------------------
-# Import spool_splitter from same directory
+# Import modules from same directory
 # ---------------------------------------------------------------------------
 _script_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _script_dir)
 from spool_splitter import parse_spool
+from format_normalizer import normalize, parse_dspffd
 
 
 def scan_file(path):
-    """Parse a single spool file and return structured inventory entry."""
+    """Parse a single file and return structured inventory entry.
+
+    Uses format_normalizer first to detect format, encoding, and members.
+    Routes to appropriate parser based on detected format.
+    """
+    # Step 1: Normalize — detect format, encoding, clean annotations, split members
+    norm = normalize(path)
+    fmt = norm["format"]
+    enc = norm["encoding"]
+    members = norm["members"]
+    warnings = norm["warnings"]
+
+    # Step 2: Route based on format
+    if fmt == "DSPFFD":
+        # Parse DSPFFD directly — produces DDS-compatible JSON
+        dspffd_result = parse_dspffd(path)
+        return {
+            "file": os.path.basename(path),
+            "path": os.path.abspath(path),
+            "format": fmt,
+            "encoding": enc,
+            "summary": {
+                "dds_pf": 1 if dspffd_result.get("fields") else 0,
+                "dds_lf": 0,
+                "dds_join_lf": 0,
+                "dds_dspf": 0,
+                "cobol": 0,
+                "cobol_subprograms": 0,
+                "cl": 0,
+            },
+            "cobol_programs": [],
+            "dds_components": [dspffd_result.get("file", "DSPFFD")],
+            "cl_programs": [],
+            "members": [
+                {"name": dspffd_result.get("file", "DSPFFD"), "type": "DSPFFD"}
+            ],
+            "warnings": warnings,
+        }
+
+    if fmt == "MSGFILE":
+        # Message file — flag but don't try to parse as spool
+        return {
+            "file": os.path.basename(path),
+            "path": os.path.abspath(path),
+            "format": fmt,
+            "encoding": enc,
+            "summary": {
+                "dds_pf": 0, "dds_lf": 0, "dds_join_lf": 0,
+                "dds_dspf": 0, "cobol": 0, "cobol_subprograms": 0, "cl": 0,
+            },
+            "cobol_programs": [],
+            "dds_components": [],
+            "cl_programs": [],
+            "members": [
+                {"name": os.path.splitext(os.path.basename(path))[0], "type": "MSGFILE"}
+            ],
+            "warnings": warnings,
+        }
+
+    # Step 3: Standard spool parsing (SEU / COPY_FILE / UNKNOWN)
     result = parse_spool(path)
     summary = result.get("summary", {})
     components = result.get("components", [])
@@ -58,13 +124,23 @@ def scan_file(path):
         if comp.get("type") == "CL_PROGRAM"
     ]
 
+    # Build member list from normalizer
+    member_list = [
+        {"name": m["name"], "type": m["type"]}
+        for m in members
+    ]
+
     return {
         "file": os.path.basename(path),
         "path": os.path.abspath(path),
+        "format": fmt,
+        "encoding": enc,
         "summary": summary,
         "cobol_programs": cobol_programs,
         "dds_components": dds_components,
         "cl_programs": cl_programs,
+        "members": member_list,
+        "warnings": warnings,
     }
 
 

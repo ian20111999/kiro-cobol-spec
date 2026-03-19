@@ -20,6 +20,11 @@ import os
 import re
 import sys
 
+# Import encoding module from same directory
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _script_dir)
+from encoding import open_as400
+
 
 # ---------------------------------------------------------------------------
 # Constants: DDS column positions (1-based) and their 0-based index offset
@@ -858,7 +863,7 @@ def _apply_dspf_field_keywords(field: dict, kw_raw: str, indicators: list[int]):
 
 def parse_dds_file(filepath: str, is_dspf: bool = False) -> dict:
     """Parse a DDS source file and return structured data as dict."""
-    with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
+    with open_as400(filepath) as f:
         raw_lines = f.readlines()
 
     fmt = _detect_format(raw_lines)
@@ -900,7 +905,7 @@ def parse_spool_section(filepath: str, start: int, end: int,
     The COPY FILE header/ruler may be outside the DDS section range,
     so we scan backwards from `start` to find the format and ruler.
     """
-    with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
+    with open_as400(filepath) as f:
         raw_lines = f.readlines()
 
     section = raw_lines[max(0, start - 1):end]
@@ -963,7 +968,7 @@ def main():
 
     if args.spool:
         if args.end == 0:
-            with open(args.file, 'r', encoding='utf-8', errors='replace') as f:
+            with open_as400(args.file) as f:
                 args.end = sum(1 for _ in f)
         result = parse_spool_section(args.file, args.start, args.end,
                                       is_dspf=args.dspf)

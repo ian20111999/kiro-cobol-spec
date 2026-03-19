@@ -24,12 +24,12 @@ import sys
 
 
 def load_skeleton(path):
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
         return json.load(f)
 
 
 def load_spec(path):
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
         return f.read()
 
 

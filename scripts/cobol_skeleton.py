@@ -20,6 +20,7 @@ import sys
 # ---------------------------------------------------------------------------
 _script_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _script_dir)
+from encoding import open_as400
 try:
     from spool_splitter import parse_records, find_program_starts
 except ImportError:
@@ -975,7 +976,7 @@ def determine_program_type(selects, has_linkage, has_main_loop, proc_using):
 
 def extract_skeleton(spool_path, program_name=None):
     """Extract the structural skeleton of a COBOL program from a spool file."""
-    with open(spool_path, "r", encoding="utf-8", errors="replace") as f:
+    with open_as400(spool_path) as f:
         lines = f.readlines()
 
     records, fmt = parse_records(lines)

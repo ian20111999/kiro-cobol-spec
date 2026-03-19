@@ -277,7 +277,7 @@ def main():
         base, _ = os.path.splitext(input_file)
         output_file = base + '.html'
 
-    with open(input_file, 'r', encoding='utf-8') as f:
+    with open(input_file, 'r', encoding='utf-8', errors='replace') as f:
         md_text = f.read()
 
     title = extract_title(md_text)

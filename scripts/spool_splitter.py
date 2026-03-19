@@ -11,9 +11,15 @@ Output: JSON inventory to stdout.
 """
 import argparse
 import json
+import os
 import re
 import sys
 from os.path import basename
+
+# Import encoding module from same directory
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _script_dir)
+from encoding import open_as400
 
 
 def parse_records(lines):
@@ -292,13 +298,13 @@ def parse_dds_section(records, end_idx):
     if dspf_group:
         merged.append(dspf_group)
 
-    # Name components
+    # Name components — avoid double prefixes (e.g. LFDLFAVPRCK3)
     for comp in merged:
         rf = comp["record_format"]
         if comp["type"] == "DDS_LF":
-            comp["name"] = "LFD" + rf
+            comp["name"] = rf if rf.upper().startswith("LF") else "LFD" + rf
         elif comp["type"] == "DDS_PF":
-            comp["name"] = "FFD" + rf
+            comp["name"] = rf if rf.upper().startswith("FF") else "FFD" + rf
         elif comp["type"] == "DDS_DSPF":
             comp["name"] = rf
 
@@ -306,7 +312,7 @@ def parse_dds_section(records, end_idx):
 
 
 def parse_spool(path):
-    with open(path, "r", encoding="utf-8", errors="replace") as f:
+    with open_as400(path) as f:
         lines = f.readlines()
 
     total_lines = len(lines)
@@ -431,6 +437,20 @@ def parse_spool(path):
                 om = re_ovrdbf.search(ct)
                 if om:
                     cl_overrides.append(om.group(1))
+
+            # Fallback: try SEU header MEMBER name or spool filename
+            if cl_name == "UNKNOWN":
+                # Try to find MEMBER name in nearby header lines
+                for line in lines[max(0, start_line - 10):start_line + 5]:
+                    mm = re.search(
+                        r"MEMBER[\s.]*[:.]?\s+(\S+)", line
+                    )
+                    if mm:
+                        cl_name = mm.group(1).strip()
+                        break
+            if cl_name == "UNKNOWN":
+                # Use spool filename as last resort
+                cl_name = os.path.splitext(basename(path))[0] + "_CL"
 
             cl_entry = {
                 "type": "CL_PROGRAM",

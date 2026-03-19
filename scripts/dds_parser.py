@@ -945,8 +945,8 @@ def main():
     parser = argparse.ArgumentParser(
         description='Parse AS/400 DDS source files and output field definitions as JSON.',
         epilog='Examples:\n'
-               '  %(prog)s FFDFALD0.txt\n'
-               '  %(prog)s MFD0062.txt --dspf\n'
+               '  %(prog)s myfile.txt\n'
+               '  %(prog)s mydspf.txt --dspf\n'
                '  %(prog)s big_spool.txt --spool --start 100 --end 250\n',
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )

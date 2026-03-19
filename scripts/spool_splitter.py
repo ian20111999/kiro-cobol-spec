@@ -284,7 +284,7 @@ def parse_dds_section(records, end_idx):
                 dspf_group["rcdnbr_end"] = comp["rcdnbr_end"]
         else:
             # Check if this non-DSPF component should be merged with active DSPF
-            # (e.g. M0062BTM follows M0062/M0062CTL)
+            # (e.g. XXXBTM follows XXX/XXXCTL)
             if dspf_group:
                 base = dspf_group["record_formats"][0]
                 if comp["record_format"].startswith(base):
@@ -298,7 +298,7 @@ def parse_dds_section(records, end_idx):
     if dspf_group:
         merged.append(dspf_group)
 
-    # Name components — avoid double prefixes (e.g. LFDLFAVPRCK3)
+    # Name components — avoid double prefixes (e.g. LFD + LFXXX = LFDLFXXX)
     for comp in merged:
         rf = comp["record_format"]
         if comp["type"] == "DDS_LF":

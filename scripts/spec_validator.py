@@ -255,13 +255,13 @@ def check_cross_references(spec, skeleton):
     # We check that any file name in the spec's table definitions matches skeleton
     # This is a light check -- just verify spec doesn't reference phantom files
     spec_file_refs = set()
-    for m in re.finditer(r'(?:LFDFALD|FFDFALD|LFD|FFD)\w+', spec, re.IGNORECASE):
+    for m in re.finditer(r'(?:LFD|FFD|MFD)\w+', spec, re.IGNORECASE):
         spec_file_refs.add(m.group(0).upper())
 
     for ref in spec_file_refs:
         # Strip common prefixes for matching
         base = ref
-        for prefix in ("LFDFALD", "FFDFALD", "LFD", "FFD"):
+        for prefix in ("LFD", "FFD", "MFD"):
             if base.startswith(prefix):
                 base = base[len(prefix):]
                 break

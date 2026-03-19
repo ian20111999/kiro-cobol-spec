@@ -388,7 +388,7 @@ def parse_select_statements(records, env_start, env_end):
 
 
 def _parse_assign_target(select_dict, target):
-    """Parse device-file from ASSIGN TO target like DATABASE-LFDFALD4 or WORKSTATION-MFD0062-SI."""
+    """Parse device-file from ASSIGN TO target like DATABASE-LFDXXX or WORKSTATION-MFDYYY-SI."""
     parts = target.split("-", 1)
     if len(parts) >= 2:
         device = parts[0].upper()

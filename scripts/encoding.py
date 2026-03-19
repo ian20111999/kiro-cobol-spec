@@ -7,8 +7,8 @@ encoded. This module provides reliable detection and a convenience opener.
 Usage:
     from encoding import detect_encoding, open_as400
 
-    enc = detect_encoding("FFDFALD0.txt")       # -> "big5"
-    with open_as400("FFDFALD0.txt") as f:        # auto-detect encoding
+    enc = detect_encoding("myfile.txt")           # -> "big5"
+    with open_as400("myfile.txt") as f:          # auto-detect encoding
         lines = f.readlines()
 
 CLI:

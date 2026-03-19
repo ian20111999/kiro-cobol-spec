@@ -138,7 +138,7 @@ def split_members(lines, path=None):
     """Split a multi-member concatenated file at E N D  O F  S O U R C E markers.
 
     Returns a list of member dicts:
-        [{"name": "FFDFALM0", "lines": [...], "start": 1, "end": 51}, ...]
+        [{"name": "MEMBER1", "lines": [...], "start": 1, "end": 51}, ...]
 
     Each member retains its own SEU header for independent parsing.
     """
@@ -204,11 +204,11 @@ def split_members(lines, path=None):
 def _extract_member_name(lines):
     """Extract member name from SEU/COPY FILE header lines."""
     for line in lines[:20]:
-        # SEU: MEMBER . . . . . . :   FFDFALM0
+        # SEU: MEMBER . . . . . . :   MEMBERNAME
         m = re.search(r"MEMBER[\s.]*[:.]?\s+(\S+)", line)
         if m and "MEMBER" in line:
             return m.group(1).strip()
-        # COPY FILE: Member . . . . : FFDFALM0
+        # COPY FILE: Member . . . . : MEMBERNAME
         m = re.search(r"Member[\s.]*[:.]?\s+(\S+)", line)
         if m:
             return m.group(1).strip()
@@ -338,7 +338,7 @@ def normalize(path):
             "encoding": "big5",
             "format": "SEU",
             "members": [
-                {"name": "FFDFALM0", "type": "DDS_PF", "lines": [...],
+                {"name": "MEMBER1", "type": "DDS_PF", "lines": [...],
                  "line_range": [1, 51]},
                 ...
             ],
@@ -442,9 +442,9 @@ def main():
         description="Normalize AS/400 exported text files: detect format, "
                     "clean annotations, split members.",
         epilog="Examples:\n"
-               "  %(prog)s FFDFALD0.txt\n"
-               "  %(prog)s /path/to/Cobol-source/ --verbose\n"
-               "  %(prog)s FFDFALD0.txt --json\n",
+               "  %(prog)s myfile.txt\n"
+               "  %(prog)s /path/to/source/ --verbose\n"
+               "  %(prog)s myfile.txt --json\n",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # COBOL Spec Skill — 一鍵安裝
-# 自動偵測 Claude Code / Kiro 並安裝到正確目錄
+# 自動偵測 Claude Code / Kiro / GitHub Copilot 並安裝到正確目錄
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SKILL_NAME="cobol-spec"
@@ -11,6 +11,7 @@ CLAUDE_SKILLS="$HOME/.claude/skills/$SKILL_NAME"
 KIRO_SKILLS="$HOME/.kiro/skills/$SKILL_NAME"
 KIRO_AGENTS="$HOME/.kiro/agents"
 KIRO_STEERING="$HOME/.kiro/steering"
+COPILOT_SKILLS="$HOME/.github/copilot-skills/$SKILL_NAME"
 
 # 核心檔案（兩個平台共用）
 CORE_DIRS=(scripts references assets)
@@ -72,10 +73,17 @@ if [ -d "$HOME/.kiro" ]; then
     echo ""
 fi
 
+# GitHub Copilot（無標準 config 目錄，永遠安裝）
+echo "▸ 安裝 GitHub Copilot Skills"
+mkdir -p "$HOME/.github/copilot-skills"
+install_core "$COPILOT_SKILLS"
+installed=$((installed + 1))
+echo ""
+
 # 結果摘要
 echo "═══════════════════════════════════════"
 if [ $installed -eq 0 ]; then
-    echo "  ✗ 未偵測到 Claude Code 或 Kiro IDE"
+    echo "  ✗ 未偵測到 Claude Code、Kiro IDE 或 GitHub Copilot"
     echo "    請先安裝其中一個，再重新執行此腳本。"
     exit 1
 else
@@ -88,6 +96,9 @@ else
         echo "  Kiro IDE:    $KIRO_SKILLS"
         echo "  Agents:      $KIRO_AGENTS"
         echo "  Steering:    $KIRO_STEERING"
+    fi
+    if [ -d "$COPILOT_SKILLS" ]; then
+        echo "  Copilot:     $COPILOT_SKILLS"
     fi
     echo ""
     echo "  使用方式：/cobol-spec your_spool.txt"

@@ -2,7 +2,7 @@
 
 AS/400 COBOL/400 程式自動分析工具，一個指令產出完整的中文規格書。
 
-支援 [Claude Code](https://claude.ai/claude-code) 和 [Kiro IDE](https://kiro.dev)。
+支援 [Claude Code](https://claude.ai/claude-code)、[Kiro IDE](https://kiro.dev) 和 [GitHub Copilot](https://github.com/features/copilot)。
 
 ## 功能
 
@@ -25,7 +25,7 @@ cd kiro-cobol-spec
 ```
 
 `install.sh` 會自動：
-- 偵測已安裝的平台（Claude Code / Kiro IDE）
+- 偵測已安裝的平台（Claude Code / Kiro IDE / GitHub Copilot）
 - 複製核心檔案到對應的 skills 目錄
 - 將 `SKILL.md` 中的腳本路徑轉換為絕對路徑
 - （Kiro）額外安裝 agents 和 steering
@@ -96,10 +96,11 @@ cd kiro-cobol-spec
 
 ## 支援平台
 
-| 平台 | 核心功能 | Agents | Steering |
-|------|:--------:|:------:|:--------:|
-| Claude Code | V | - | - |
-| Kiro IDE | V | V | V |
+| 平台 | 核心功能 | Agents | Steering | 安裝路徑 |
+|------|:--------:|:------:|:--------:|----------|
+| Claude Code | V | - | - | `~/.claude/skills/cobol-spec/` |
+| Kiro IDE | V | V | V | `~/.kiro/skills/cobol-spec/` |
+| GitHub Copilot | V | - | - | `~/.github/copilot-skills/cobol-spec/` |
 
 ## License
 

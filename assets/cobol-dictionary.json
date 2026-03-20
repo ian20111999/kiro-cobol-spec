@@ -350,5 +350,52 @@
     "SQLCODE_-811": "SELECT INTO 回傳多筆",
     "SQLCODE_-904": "資源不可用",
     "SQLCODE_-911": "鎖定逾時或死結"
+  },
+  "program_classification": {
+    "main_program": "主程式：不被其他程式呼叫，由外部系統、批次排程、終端使用者直接啟動",
+    "subprogram": "副程式：由其他 COBOL 程式透過 CALL USING 呼叫執行",
+    "batch_program": "批次程式：用於大量資料處理的程式，通常於批次排程中執行",
+    "report_program": "報表程式：負責產生報表的 COBOL 程式，特徵是程式有定義 PRTF (Print File)",
+    "interactive_program": "畫面程式：提供使用者互動的線上程式，特徵是程式有定義 DSPF (Display File)"
+  },
+  "as400_outfile_fields": {
+    "DSPPGMREF": {
+      "WHPNAM": "程式名稱",
+      "WHLIB": "程式庫",
+      "WHRFNM": "參照物件名稱",
+      "WHRFLIB": "參照物件庫",
+      "WHRFTP": "參照物件類型（*FILE/*PGM/*SRVPGM）",
+      "WHFIUS": "檔案使用方式（I=輸入/O=輸出/B=雙向/U=更新）"
+    },
+    "DSPFFD": {
+      "WHFILE": "檔案名稱",
+      "WHLIB": "檔案庫",
+      "WHNAME": "記錄格式名稱",
+      "WHFLDI": "欄位內部名稱",
+      "WHFLDE": "欄位外部名稱",
+      "WHFLDT": "欄位資料型態（A/P/S/B/Y/L/T/Z）",
+      "WHFLDB": "欄位總長度（位元組）",
+      "WHFLDD": "欄位小數位數",
+      "WHFTXT": "欄位描述文字",
+      "WHCHD1": "欄位標題第一行",
+      "WHCHD2": "欄位標題第二行",
+      "WHCHD3": "欄位標題第三行",
+      "WHKSEQ": "鍵值序號（0=非鍵值）"
+    },
+    "DSPDBR": {
+      "DBFFIL": "基礎檔案名稱",
+      "DBFLIB": "基礎檔案庫",
+      "DBFRLF": "相依邏輯檔名稱",
+      "DBFRLIB": "相依邏輯檔庫"
+    },
+    "DSPOBJD": {
+      "ODOBNM": "物件名稱",
+      "ODLBNM": "物件庫名",
+      "ODOBTP": "物件類型",
+      "ODOBTX": "物件描述文字",
+      "ODSRCF": "原始碼檔案",
+      "ODSRCL": "原始碼庫名",
+      "ODSRCM": "原始碼成員名"
+    }
   }
 }

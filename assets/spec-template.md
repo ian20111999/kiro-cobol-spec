@@ -1,131 +1,32 @@
-# {PROGRAM_ID} ({SPOOL_ID}) — {PROGRAM_NAME}
+# {PROGRAM_ID} 程式規格書
 
-> **程式類型**：{PROGRAM_TYPE}
-> **開發日期**：{DEV_DATE}
-> **原始碼**：{SOURCE_INFO}
+## 1. 簡述
 
----
+{SUMMARY — 1-3 句商業語言描述程式主要功能}
 
-## 一. 程式流程圖
+## 2. 程式分類
 
-```mermaid
-{FLOWCHART_MERMAID}
-```
+| 項目 | 說明 |
+|------|------|
+| 程式代號 | {PROGRAM_ID} |
+| 程式名稱 | {PROGRAM_NAME} |
+| 程式類型 | {TYPE: 主程式/副程式/批次程式/報表程式/畫面程式} |
+| 分類依據 | {WHY: 有 DSPF → 畫面程式；有 PRTF → 報表程式；有 ENTRY → 副程式...} |
 
----
+### 程式分類定義
 
-## 二. 程式邏輯
+- **主程式**：不被其他程式呼叫，由外部系統、批次排程、終端使用者直接啟動
+- **副程式**：由其他 COBOL 程式透過 CALL USING 呼叫執行
+- **批次程式**：用於大量資料處理，通常於批次排程中執行
+- **報表程式**：負責產生報表，特徵是定義 PRTF (Print File)
+- **畫面程式**：提供使用者互動的線上程式，特徵是定義 DSPF (Display File)
 
-{LOGIC_SECTION}
+## 3. 參數說明
 
----
+### CALL USING 參數
 
-## 三. 副程式表格
-
-| 程式代號 | 功能說明 | 呼叫段落 | 傳入參數 | 取回結果 |
-|---------|---------|---------|---------|---------|
-{CALL_TABLE}
-
----
-
-## 四. Table 定義
-
-{TABLE_SECTION}
-
----
-
-{IF_HAS_SQL}
-## 四之一. SQL 操作
-
-| # | SQL 類型 | 目標表/游標 | 條件/KEY | 所在段落 | 說明 |
-|---|---------|-----------|---------|---------|------|
-{SQL_TABLE}
-
----
-
-{END_IF_HAS_SQL}
-
-{IF_HAS_ERROR_HANDLING}
-## 四之二. 錯誤處理
-
-### File Status 異常處理總表
-
-| 檔案名稱 | File Status | 處理方式 | 所在段落 |
-|---------|------------|---------|---------|
-{ERROR_HANDLING_TABLE}
-
-{END_IF_HAS_ERROR_HANDLING}
-
-{IF_HAS_KEY_WS_VARS}
-## 四之三. 重要 WORKING-STORAGE 變數
-
-### 開關/旗標
-
-| 變數名稱 | 型態 | 用途說明 |
-|---------|------|---------|
-{SWITCHES_TABLE}
-
-### 計數器/狀態
-
-| 變數名稱 | 型態 | 用途說明 |
-|---------|------|---------|
-{COUNTERS_TABLE}
-
-### 工作表格（OCCURS）
-
-| 變數名稱 | 維度 | 用途說明 |
-|---------|------|---------|
-{WORK_TABLES_TABLE}
-
-{END_IF_HAS_KEY_WS_VARS}
-
-{IF_HAS_TRANSACTION}
-## 四之四. 交易控制
-
-| # | 類型 | 所在段落 | 說明 |
-|---|------|---------|------|
-{TRANSACTION_TABLE}
-
-**交易範圍說明：**
-{TRANSACTION_SCOPE}
-
----
-
-{END_IF_HAS_TRANSACTION}
-
-{IF_INTERACTIVE}
-## 五. 畫面規格
-
-### 畫面排版
-
-```
-{SCREEN_LAYOUT}
-```
-
-### Record Format 欄位
-
-{SCREEN_FIELDS}
-
-### Function Key 對照表
-
-| 按鍵 | 指標 | 功能說明 |
-|------|------|---------|
-{FK_TABLE}
-
-### Indicator 對照表
-
-| 指標 | 用途 | 控制欄位/動作 |
-|------|------|-------------|
-{INDICATOR_TABLE}
-
-{END_IF_INTERACTIVE}
-
----
-
-## 六. 參數介面
-
-### LINKAGE SECTION
-
+| # | 參數名稱 | 方向 | 資料型態 | 長度 | 小數 | 說明 |
+|---|---------|------|---------|------|------|------|
 {LINKAGE_TABLE}
 
 ### LDA（Local Data Area）
@@ -133,3 +34,61 @@
 | # | 位置 (起-迄) | 長度 | 欄位名稱 | 用途說明 |
 |---|-------------|------|---------|---------|
 {LDA_TABLE}
+
+## 4. 使用檔案清單
+
+| # | 檔案代號 | 類型 | OPEN 模式 | KEY 欄位 | 用途說明 |
+|---|---------|------|----------|---------|---------|
+{FILE_LIST_TABLE}
+
+### 檔案欄位定義
+
+{FILE_SCHEMA_TABLES — 每個檔案一個子章節，來自 DSPFFD 或 dds_parser}
+
+## 5. 使用程式清單
+
+| # | 程式代號 | 功能說明 | 呼叫段落 | 傳入參數 | 取回結果 | 資訊來源 |
+|---|---------|---------|---------|---------|---------|---------|
+{CALL_TABLE}
+
+## 6. 處理內容
+
+### 6.1 業務規則
+
+{BUSINESS_RULES — 從邏輯翻譯中提取的商業規則}
+
+### 6.2 檢核規則
+
+{VALIDATION_RULES — 欄位驗證、格式檢查、必填檢查}
+
+### 6.3 資料處理邏輯
+
+{PROCESSING_LOGIC — 主要段落的邏輯翻譯，按功能群組分節}
+
+### 6.4 檔案 I/O
+
+{FILE_IO — 每個檔案的讀寫操作摘要 + File Status 處理}
+
+### 6.5 CALL 模組邏輯
+
+{CALL_LOGIC — 呼叫副程式的時機、條件、前後處理}
+
+### 6.6 例外處理
+
+{EXCEPTION_HANDLING — File Status 異常、SQL 錯誤、ROLLBACK 條件}
+
+## 7. 圖表
+
+### 7.1 資料關聯圖（ERD）
+
+```mermaid
+erDiagram
+    {ERD — 來自 DSPDBR 或邏輯推斷}
+```
+
+### 7.2 程式流程圖
+
+```mermaid
+flowchart TD
+    {FLOWCHART — 來自 logic-translator}
+```

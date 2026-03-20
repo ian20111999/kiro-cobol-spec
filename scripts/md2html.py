@@ -22,16 +22,25 @@ def md_to_html(md_text):
         if line.strip().startswith('```'):
             if not in_code:
                 in_code = True
-                code_lang = line.strip()[3:]
-                html_lines.append(f'<pre><code class="language-{code_lang}">')
+                code_lang = line.strip()[3:].strip()
+                if code_lang == 'mermaid':
+                    html_lines.append('<div class="mermaid">')
+                else:
+                    html_lines.append(f'<pre><code class="language-{code_lang}">')
             else:
+                if code_lang == 'mermaid':
+                    html_lines.append('</div>')
+                else:
+                    html_lines.append('</code></pre>')
                 in_code = False
-                html_lines.append('</code></pre>')
             i += 1
             continue
 
         if in_code:
-            html_lines.append(escape_html(line))
+            if code_lang == 'mermaid':
+                html_lines.append(line)
+            else:
+                html_lines.append(escape_html(line))
             i += 1
             continue
 
@@ -246,11 +255,20 @@ strong {
 em {
     color: #4a5568;
 }
+.mermaid {
+    text-align: center;
+    background: #f7fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 1em 0;
+}
 @media print {
     body { max-width: none; padding: 10px; }
     table { page-break-inside: avoid; }
     h2 { page-break-before: auto; }
     pre { white-space: pre-wrap; }
+    .mermaid { page-break-inside: avoid; }
 }
 """
 
@@ -295,6 +313,8 @@ def main():
 </head>
 <body>
 {body}
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({{startOnLoad: true, theme: 'default'}});</script>
 </body>
 </html>"""
 

@@ -1,46 +1,51 @@
-# COBOL Spec Skill for Kiro IDE
+# COBOL Spec Skill v3.0
 
 AS/400 COBOL/400 程式自動分析工具，一個指令產出完整的中文規格書。
 
-從 [Claude Code](https://claude.ai/claude-code) 版 v2.0 移植到 [Kiro IDE](https://kiro.dev)，新增批次處理能力。
+支援 [Claude Code](https://claude.ai/claude-code) 和 [Kiro IDE](https://kiro.dev)。
 
 ## 功能
 
-- **Spool 拆解** — 解析 AS/400 COPY FILE / SEU SOURCE LISTING，辨識 DDS (PF/LF/JOIN LF/DSPF)、COBOL、CL 程式邊界
-- **骨架解析** — 提取 COBOL 程式結構（Paragraphs、CALL、SQL、LINKAGE、檔案定義）
-- **DDS 解析** — A-spec 欄位定義解析，支援 PF/LF/JOIN LF/DSPF
+- **編碼偵測** — 自動識別 Big5 / UTF-8，避免亂碼
+- **格式正規化** — 偵測 SEU / COPY FILE / DSPFFD / MSGFILE 格式，清理標註殘留，拆分多 member 檔案
+- **Spool 拆解** — 解析 AS/400 spool，辨識 DDS (PF/LF/JOIN LF/DSPF)、COBOL、CL 程式邊界
+- **骨架解析** — 提取 COBOL 程式結構（Paragraphs、CALL、SQL、LINKAGE、88-level、REDEFINES、COMMIT/ROLLBACK）
+- **DDS 解析** — A-spec 欄位定義，支援 PF/LF/JOIN LF/DSPF、DATFMT/TIMFMT/DFT/CONCAT/SST
 - **規格書驗證** — 10 項交叉檢查（段落覆蓋率、檔案對應、CALL 完整性等）
+- **Mermaid 流程圖** — 自動產出程式主要段落的執行流程圖
 - **批次處理** — 整個資料夾一次掃描，產出多支程式的規格書
 - **HTML 輸出** — Markdown 轉 styled HTML，支援 CJK 字型
 
 ## 安裝
 
-將檔案放到 Kiro 對應目錄：
-
 ```bash
-# Skill 本體
-cp -R SKILL.md scripts/ references/ assets/ ~/.kiro/skills/cobol-spec/
-
-# Steering（自動載入 COBOL/400 通用知識）
-cp steering/cobol-conventions.md ~/.kiro/steering/
-
-# Custom Agents（專職邏輯翻譯 + 畫面分析）
-cp agents/*.md ~/.kiro/agents/
+git clone https://github.com/yourusername/kiro-cobol-spec.git
+cd kiro-cobol-spec
+./install.sh
 ```
+
+`install.sh` 會自動：
+- 偵測已安裝的平台（Claude Code / Kiro IDE）
+- 複製核心檔案到對應的 skills 目錄
+- 將 `SKILL.md` 中的腳本路徑轉換為絕對路徑
+- （Kiro）額外安裝 agents 和 steering
 
 ## 使用
 
 ```
-/cobol-spec your_spool.txt                  # 單檔模式
-/cobol-spec --batch /path/to/folder         # 批次模式
+/cobol-spec your_spool.txt                    # 單檔模式
+/cobol-spec --batch /path/to/folder           # 批次模式
+/cobol-spec --batch a.txt b.txt c.txt         # 多檔批次處理
 ```
 
-互動式流程會在關鍵步驟暫停確認（選擇目標程式、補充 DDS 檔案、確認副程式來源）。
+互動式流程會在商業邏輯不明確時暫停確認，其餘全自動。
 
 ## 腳本一覽
 
 | 腳本 | 功能 | 用法 |
 |------|------|------|
+| `encoding.py` | 偵測 Big5/UTF-8 編碼 | `python3 scripts/encoding.py <file>` |
+| `format_normalizer.py` | 格式偵測 + 標註清理 + member 拆分 | `python3 scripts/format_normalizer.py <file_or_dir>` |
 | `spool_splitter.py` | Spool → inventory JSON | `python3 scripts/spool_splitter.py <spool>` |
 | `cobol_skeleton.py` | COBOL → skeleton JSON | `python3 scripts/cobol_skeleton.py <spool> [--program NAME]` |
 | `dds_parser.py` | DDS → field list JSON | `python3 scripts/dds_parser.py <file> [--dspf]` |
@@ -53,21 +58,32 @@ cp agents/*.md ~/.kiro/agents/
 ## 目錄結構
 
 ```
-├── SKILL.md                    # 主流程（含批次模式）
-├── scripts/                    # 6 個 Python 腳本
-├── references/                 # AI 分析用 prompt
-│   ├── logic-translator.md     #   邏輯翻譯規則
-│   ├── callsite-analyzer.md    #   副程式分析規則
-│   └── screen-analyzer.md      #   畫面分析規則
+├── install.sh                     # 一鍵安裝腳本
+├── SKILL.md                       # 主流程（含批次模式）
+├── scripts/                       # 8 個 Python 腳本
+│   ├── encoding.py                #   編碼偵測
+│   ├── format_normalizer.py       #   格式正規化 + 前處理
+│   ├── spool_splitter.py          #   Spool 拆解
+│   ├── cobol_skeleton.py          #   骨架解析
+│   ├── dds_parser.py              #   DDS 解析
+│   ├── spec_validator.py          #   規格書驗證
+│   ├── md2html.py                 #   Markdown → HTML
+│   └── batch_inventory.py         #   批次掃描
+├── references/                    # AI 分析用 prompt
+│   ├── logic-translator.md        #   邏輯翻譯規則
+│   ├── callsite-analyzer.md       #   副程式分析規則
+│   └── screen-analyzer.md         #   畫面分析規則
 ├── assets/
-│   ├── cobol-dictionary.json   # 200+ 術語對照（File Status / API / Edit Code / Indicator）
-│   └── spec-template.md        # 規格書模板
-├── steering/
-│   └── cobol-conventions.md    # COBOL/400 通用知識（auto inclusion）
-└── agents/
-    ├── cobol-translator.md     # 專職邏輯翻譯 agent
-    └── cobol-screen-analyst.md # 專職畫面分析 agent
+│   ├── cobol-dictionary.json      #   200+ 術語對照（File Status / API / Edit Code / Indicator）
+│   └── spec-template.md           #   規格書模板
+├── agents/                        #   ⚠️ Kiro 專用
+│   ├── cobol-translator.md        #   專職邏輯翻譯 agent
+│   └── cobol-screen-analyst.md    #   專職畫面分析 agent
+└── steering/                      #   ⚠️ Kiro 專用
+    └── cobol-conventions.md       #   COBOL/400 通用知識（auto inclusion）
 ```
+
+> `agents/` 和 `steering/` 僅 Kiro IDE 使用。Claude Code 安裝時會自動忽略。
 
 ## 支援的程式類型
 
@@ -78,10 +94,12 @@ cp agents/*.md ~/.kiro/agents/
 | SUBPROGRAM | V | - | 視情況 | 視情況 | V |
 | REPORT | V | - | V | V | 視情況 |
 
-## 相容性
+## 支援平台
 
-- **Kiro IDE** — 完整支援（steering + custom agents）
-- **Claude Code** — 相容（忽略 steering/agents 目錄即可）
+| 平台 | 核心功能 | Agents | Steering |
+|------|:--------:|:------:|:--------:|
+| Claude Code | V | - | - |
+| Kiro IDE | V | V | V |
 
 ## License
 

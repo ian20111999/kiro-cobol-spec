@@ -121,13 +121,15 @@ python3 scripts/cobol_skeleton.py <spool_file> --program <program_name>
 
 根據程式類型，分派以下工作。盡量平行執行。
 
-#### 4a. 邏輯翻譯（AI）— 所有類型
+#### 4a. 邏輯翻譯 + 流程圖（AI）— 所有類型
 
 讀取 `references/logic-translator.md` 取得翻譯 prompt。
 
 將 PROCEDURE DIVISION 按功能群組分批（每批 ~1,000 行）：
 - 使用 skeleton.paragraphs 的 group 分組
 - 每批帶前一批的摘要
+
+翻譯完成後，產出 **Mermaid 流程圖**（`flowchart TD`），呈現程式主要段落的執行流程、條件分支、迴圈結構。
 
 #### 4b. 副程式分析（AI）— 有 CALL 時
 
@@ -177,12 +179,13 @@ python3 scripts/dds_parser.py <dds_file.txt>
 
 組裝順序：
 1. 標題 + 基本資訊（程式名、類型、用途）
-2. 一. 程式邏輯（4a 的產出）
-3. 二. 副程式表格（4b 的產出）
-4. 三. Table 定義（4c 的產出）
-5. 四. 畫面規格（4d 的產出，僅 INTERACTIVE）
-6. 五. 參數介面（4e 的產出）
-7. 六. CL 前處理（4f 的產出，若有）
+2. 一. 程式流程圖（4a 的 Mermaid 流程圖）
+3. 二. 程式邏輯（4a 的段落翻譯）
+4. 三. 副程式表格（4b 的產出）
+5. 四. Table 定義（4c 的產出）
+6. 五. 畫面規格（4d 的產出，僅 INTERACTIVE）
+7. 六. 參數介面（4e 的產出）
+8. 七. CL 前處理（4f 的產出，若有）
 
 存為 `output/{program_id}/{program_id}_spec.md`。
 

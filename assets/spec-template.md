@@ -6,13 +6,21 @@
 
 ---
 
-## 一. 程式邏輯
+## 一. 程式流程圖
+
+```mermaid
+{FLOWCHART_MERMAID}
+```
+
+---
+
+## 二. 程式邏輯
 
 {LOGIC_SECTION}
 
 ---
 
-## 二. 副程式表格
+## 三. 副程式表格
 
 | 程式代號 | 功能說明 | 呼叫段落 | 傳入參數 | 取回結果 |
 |---------|---------|---------|---------|---------|
@@ -20,14 +28,14 @@
 
 ---
 
-## 三. Table 定義
+## 四. Table 定義
 
 {TABLE_SECTION}
 
 ---
 
 {IF_HAS_SQL}
-## 三之一. SQL 操作
+## 四之一. SQL 操作
 
 | # | SQL 類型 | 目標表/游標 | 條件/KEY | 所在段落 | 說明 |
 |---|---------|-----------|---------|---------|------|
@@ -38,7 +46,7 @@
 {END_IF_HAS_SQL}
 
 {IF_HAS_ERROR_HANDLING}
-## 三之二. 錯誤處理
+## 四之二. 錯誤處理
 
 ### File Status 異常處理總表
 
@@ -49,7 +57,7 @@
 {END_IF_HAS_ERROR_HANDLING}
 
 {IF_HAS_KEY_WS_VARS}
-## 三之三. 重要 WORKING-STORAGE 變數
+## 四之三. 重要 WORKING-STORAGE 變數
 
 ### 開關/旗標
 
@@ -72,7 +80,7 @@
 {END_IF_HAS_KEY_WS_VARS}
 
 {IF_HAS_TRANSACTION}
-## 三之四. 交易控制
+## 四之四. 交易控制
 
 | # | 類型 | 所在段落 | 說明 |
 |---|------|---------|------|
@@ -86,7 +94,7 @@
 {END_IF_HAS_TRANSACTION}
 
 {IF_INTERACTIVE}
-## 四. 畫面規格
+## 五. 畫面規格
 
 ### 畫面排版
 
@@ -114,7 +122,7 @@
 
 ---
 
-## 五. 參數介面
+## 六. 參數介面
 
 ### LINKAGE SECTION
 

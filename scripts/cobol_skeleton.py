@@ -1068,11 +1068,11 @@ def extract_skeleton(spool_path, program_name=None):
         if "ENVIRONMENT" in divs:
             env_s, env_e = divs["ENVIRONMENT"]
             env_copies = extract_copy_members(records, env_s, env_e)
-            seen = set(copy_members)
+            seen = {c["name"] for c in copy_members}
             for c in env_copies:
-                if c not in seen:
+                if c["name"] not in seen:
                     copy_members.append(c)
-                    seen.add(c)
+                    seen.add(c["name"])
 
         # Display file detection
         display_file = detect_display_file(selects, records, data_s, data_e)
@@ -1081,11 +1081,11 @@ def extract_skeleton(spool_path, program_name=None):
     if "PROCEDURE" in divs:
         proc_s, proc_e = divs["PROCEDURE"]
         proc_copies = extract_copy_members(records, proc_s, proc_e)
-        seen = set(copy_members)
+        seen = {c["name"] for c in copy_members}
         for c in proc_copies:
-            if c not in seen:
+            if c["name"] not in seen:
                 copy_members.append(c)
-                seen.add(c)
+                seen.add(c["name"])
 
     # ---- Build file details by merging SELECT + FD + OPEN info ----
     files_info = _build_file_details(selects, records, start_idx, end_idx)

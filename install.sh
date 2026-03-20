@@ -39,8 +39,8 @@ install_core() {
         cp "$SCRIPT_DIR/$file" "$target/$file"
     done
 
-    # 將 SKILL.md 中的相對路徑 scripts/ 替換為絕對路徑
-    sed -i '' "s|scripts/|$target/scripts/|g" "$target/SKILL.md"
+    # 將 SKILL.md 中的 __SKILL_DIR__ 替換為實際安裝路徑
+    sed -i '' "s|__SKILL_DIR__|$target|g" "$target/SKILL.md"
 
     echo "  ✓ 核心檔案已安裝"
 }

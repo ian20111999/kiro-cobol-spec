@@ -65,14 +65,14 @@ metadata:
 
 | 腳本 | 功能 | CLI 用法 |
 |------|------|----------|
-| `scripts/encoding.py` | 偵測 Big5/UTF-8 編碼 | `python3 scripts/encoding.py <file>` |
-| `scripts/format_normalizer.py` | 格式偵測 + 標註清理 + member 拆分 | `python3 scripts/format_normalizer.py <file_or_dir>` |
-| `scripts/spool_splitter.py` | Spool → inventory JSON | `python3 scripts/spool_splitter.py <spool_file>` |
-| `scripts/cobol_skeleton.py` | COBOL → skeleton JSON | `python3 scripts/cobol_skeleton.py <spool_file> [--program NAME]` |
-| `scripts/dds_parser.py` | DDS → field list JSON | `python3 scripts/dds_parser.py <file> [--dspf] [--spool --start N --end M]` |
-| `scripts/spec_validator.py` | 驗證 spec 完整性 | `python3 scripts/spec_validator.py <spec.md> <skeleton.json>` |
-| `scripts/md2html.py` | Markdown → HTML | `python3 scripts/md2html.py <input.md> [output.html]` |
-| `scripts/batch_inventory.py` | 批次掃描多 .txt | `python3 scripts/batch_inventory.py <dir_or_files...>` |
+| `__SKILL_DIR__/scripts/encoding.py` | 偵測 Big5/UTF-8 編碼 | `python3 __SKILL_DIR__/scripts/encoding.py <file>` |
+| `__SKILL_DIR__/scripts/format_normalizer.py` | 格式偵測 + 標註清理 + member 拆分 | `python3 __SKILL_DIR__/scripts/format_normalizer.py <file_or_dir>` |
+| `__SKILL_DIR__/scripts/spool_splitter.py` | Spool → inventory JSON | `python3 __SKILL_DIR__/scripts/spool_splitter.py <spool_file>` |
+| `__SKILL_DIR__/scripts/cobol_skeleton.py` | COBOL → skeleton JSON | `python3 __SKILL_DIR__/scripts/cobol_skeleton.py <spool_file> [--program NAME]` |
+| `__SKILL_DIR__/scripts/dds_parser.py` | DDS → field list JSON | `python3 __SKILL_DIR__/scripts/dds_parser.py <file> [--dspf] [--spool --start N --end M]` |
+| `__SKILL_DIR__/scripts/spec_validator.py` | 驗證 spec 完整性 | `python3 __SKILL_DIR__/scripts/spec_validator.py <spec.md> <skeleton.json>` |
+| `__SKILL_DIR__/scripts/md2html.py` | Markdown → HTML | `python3 __SKILL_DIR__/scripts/md2html.py <input.md> [output.html]` |
+| `__SKILL_DIR__/scripts/batch_inventory.py` | 批次掃描多 .txt | `python3 __SKILL_DIR__/scripts/batch_inventory.py <dir_or_files...>` |
 
 所有腳本均支援 `--help`。
 
@@ -85,7 +85,7 @@ metadata:
 先跑 `format_normalizer.py` 偵測格式和編碼：
 
 ```bash
-python3 scripts/format_normalizer.py <spool_file> --json
+python3 __SKILL_DIR__/scripts/format_normalizer.py <spool_file> --json
 ```
 
 - 偵測編碼（Big5 / UTF-8）
@@ -98,7 +98,7 @@ python3 scripts/format_normalizer.py <spool_file> --json
 執行 `spool_splitter.py` 產出元件清單：
 
 ```bash
-python3 scripts/spool_splitter.py <spool_file>
+python3 __SKILL_DIR__/scripts/spool_splitter.py <spool_file>
 ```
 
 **產出**：JSON inventory（DDS/COBOL/CL 區塊 + 行號範圍）
@@ -110,7 +110,7 @@ python3 scripts/spool_splitter.py <spool_file>
 執行 `cobol_skeleton.py` 產出程式結構：
 
 ```bash
-python3 scripts/cobol_skeleton.py <spool_file> --program <program_name>
+python3 __SKILL_DIR__/scripts/cobol_skeleton.py <spool_file> --program <program_name>
 ```
 
 **產出**：JSON skeleton（files, paragraphs, calls, linkage, type）
@@ -123,7 +123,7 @@ python3 scripts/cobol_skeleton.py <spool_file> --program <program_name>
 
 #### 4a. 邏輯翻譯 + 流程圖（AI）— 所有類型
 
-讀取 `references/logic-translator.md` 取得翻譯 prompt。
+讀取 `__SKILL_DIR__/references/logic-translator.md` 取得翻譯 prompt。
 
 將 PROCEDURE DIVISION 按功能群組分批（每批 ~1,000 行）：
 - 使用 skeleton.paragraphs 的 group 分組
@@ -133,7 +133,7 @@ python3 scripts/cobol_skeleton.py <spool_file> --program <program_name>
 
 #### 4b. 副程式分析（AI）— 有 CALL 時
 
-讀取 `references/callsite-analyzer.md` 取得分析 prompt。
+讀取 `__SKILL_DIR__/references/callsite-analyzer.md` 取得分析 prompt。
 
 對每個 CALL 目標：
 1. 讀取呼叫點上下文（前後 10 行）
@@ -150,12 +150,12 @@ python3 scripts/cobol_skeleton.py <spool_file> --program <program_name>
 4. 產出欄位定義表格（含中文 COLHDG）
 
 ```bash
-python3 scripts/dds_parser.py <dds_file.txt>
+python3 __SKILL_DIR__/scripts/dds_parser.py <dds_file.txt>
 ```
 
 #### 4d. 畫面解析（AI）— 僅 INTERACTIVE
 
-讀取 `references/screen-analyzer.md` 取得解析 prompt。
+讀取 `__SKILL_DIR__/references/screen-analyzer.md` 取得解析 prompt。
 
 1. 用 `dds_parser.py --dspf` 解析 Display File
 2. 結合 COBOL 程式中的畫面處理段落
@@ -175,7 +175,7 @@ python3 scripts/dds_parser.py <dds_file.txt>
 
 ### Step 5: 組裝規格書（自動）
 
-讀取 `assets/spec-template.md` 取得格式模板。
+讀取 `__SKILL_DIR__/assets/spec-template.md` 取得格式模板。
 
 組裝順序：
 1. 標題 + 基本資訊（程式名、類型、用途）
@@ -191,7 +191,7 @@ python3 scripts/dds_parser.py <dds_file.txt>
 
 產生 HTML：
 ```bash
-python3 scripts/md2html.py output/{program_id}/{program_id}_spec.md
+python3 __SKILL_DIR__/scripts/md2html.py output/{program_id}/{program_id}_spec.md
 ```
 
 ### Step 6: 驗證（自動）
@@ -199,7 +199,7 @@ python3 scripts/md2html.py output/{program_id}/{program_id}_spec.md
 執行 `spec_validator.py`：
 
 ```bash
-python3 scripts/spec_validator.py \
+python3 __SKILL_DIR__/scripts/spec_validator.py \
   output/{program_id}/{program_id}_spec.md \
   output/{program_id}/{program}_skeleton.json
 ```
@@ -217,7 +217,7 @@ python3 scripts/spec_validator.py \
 ### B1. 批次掃描
 
 ```bash
-python3 scripts/batch_inventory.py <directory_or_files>
+python3 __SKILL_DIR__/scripts/batch_inventory.py <directory_or_files>
 ```
 
 ### B2. 逐支處理

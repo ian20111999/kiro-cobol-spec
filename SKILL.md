@@ -299,8 +299,12 @@ python3 /Users/ian/.claude/skills/cobol-spec/scripts/cobol_skeleton.py <source_f
 
 ### Step B5: 組裝 7 章節規格書（自動）
 
-讀取 `/Users/ian/.claude/skills/cobol-spec/assets/spec-template.md` 取得格式模板。
-讀取 `/Users/ian/.claude/skills/cobol-spec/assets/cobol-dictionary.json` 取得術語對照。
+**重要：此步驟由 AI 直接完成，沒有對應的 Python 腳本。不要嘗試呼叫 assemble_spec.py 或任何組裝腳本 — 它不存在。**
+
+AI 讀取模板和術語對照表，將 Step B4 的分析結果直接組裝成 Markdown 規格書：
+
+- 模板：`/Users/ian/.claude/skills/cobol-spec/assets/spec-template.md`
+- 術語：`/Users/ian/.claude/skills/cobol-spec/assets/cobol-dictionary.json`
 
 組裝順序（7 章節）：
 

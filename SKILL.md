@@ -225,126 +225,219 @@ fetcher 已將 source 存為 spool 相容的 .txt 格式。
 python3 /Users/ian/.claude/skills/cobol-spec/scripts/cobol_skeleton.py <source_file_path> --program <program_name>
 ```
 
-### Step B4: 平行分析（自動）
+### Step B4 + B5: 分析 + 組裝（Agent subagent 架構）
 
-根據程式類型，分派以下工作。盡量平行執行。
+**⚠️ 防 timeout 鐵律：禁止在主對話中累積大量 context。**
 
-**資料來源對照**（PATH A vs PATH B）：
+**原因**：COBOL source（1000+ 行）+ reference files（logic-translator 400 行、callsite-analyzer、screen-analyzer、dictionary 400 行）+ 翻譯結果 + spec 輸出，全部累積在同一對話會超出 API 限制。
 
-| 分析項目 | PATH A（本地） | PATH B（遠端） |
-|----------|---------------|---------------|
-| Source code | spool .txt | CPYTOSTMF |
-| File schema | dds_parser.py | DSPFFD（精確） |
-| File I/O 方向 | COBOL SELECT 推斷 | DSPPGMREF（精確） |
-| 副程式功能 | callsite 推斷 | DSPOBJD TEXT（精確）+ callsite |
-| 檔案關聯 ERD | 程式邏輯推斷 | DSPDBR（精確） |
-| 畫面 | dds_parser.py --dspf | DSPFFD + dds_parser.py |
+**解法**：每個分析任務用 **Agent tool（subagent_type: "general-purpose"）** 獨立執行。Agent 在隔離的 context 中工作，只回傳精簡結果。主對話保持輕量。
 
-#### 4a. 邏輯翻譯 + 流程圖（AI）— 所有類型
+---
 
-讀取 `/Users/ian/.claude/skills/cobol-spec/references/logic-translator.md` 取得翻譯 prompt。
+#### 主對話只做三件事
 
-將 PROCEDURE DIVISION 按功能群組分批（每批 ~500-800 行）：
-- 使用 skeleton.paragraphs 的 group 分組
-- 每批帶前一批的摘要
+1. **執行 Python 腳本**（skeleton、dds_parser 等 — 輸出小的 JSON）
+2. **派出 Agent subagent** 做重分析
+3. **收到 Agent 結果後，直接寫入 spec 檔案**
 
-翻譯完成後：
-1. 產出 **Mermaid 流程圖**（Section 7.2）
-2. 將翻譯結果分類到 Section 6 的 6 個子章節（見 logic-translator.md 的「Section 6 子章節分類指引」）
+**主對話禁止做的事：**
+- ❌ 讀取 `references/logic-translator.md`（400 行）
+- ❌ 讀取 `references/callsite-analyzer.md`
+- ❌ 讀取 `references/screen-analyzer.md`
+- ❌ 讀取 `assets/cobol-dictionary.json`（400 行）
+- ❌ 直接讀取完整 COBOL source code
+- ❌ 在主對話中做邏輯翻譯
 
-#### 4b. 副程式分析（AI）— 有 CALL 時
+這些全部交給 Agent subagent。
 
-讀取 `/Users/ian/.claude/skills/cobol-spec/references/callsite-analyzer.md`。
+---
 
-對每個 CALL 目標：
-1. PATH B：使用 fetcher JSON 的 `referenced_programs[].text`（精確功能說明）
-2. PATH A：讀取呼叫點上下文推斷
-3. 產出 Section 5 的使用程式清單表格
-4. 標註資訊來源：`DSPOBJD` / `callsite` / `source`
+#### Agent 1: 邏輯翻譯（最重 — 必須隔離）
 
-#### 4c. 檔案定義（自動 + AI）— 有檔案操作時
+用 Agent tool 啟動，prompt 包含：
 
-**PATH B**：使用 fetcher JSON 的 `referenced_files[].schema`（DSPFFD 精確資料）
-**PATH A**：
-1. 優先用 `dds_parser.py` 解析同資料夾的獨立 .txt 檔
-2. 若無獨立 .txt，從 spool file 的 DDS 區段解析
-3. 若都找不到：從 WORKING-STORAGE 推斷，標註「來源: WORKING-STORAGE 推斷」
+```
+subagent_type: "general-purpose"
+prompt: |
+  你是 COBOL 邏輯翻譯專家。請完成以下任務：
 
-產出 Section 4 的使用檔案清單 + 檔案欄位定義。
+  1. 讀取翻譯規則：/Users/ian/.claude/skills/cobol-spec/references/logic-translator.md
+  2. 讀取術語表：/Users/ian/.claude/skills/cobol-spec/assets/cobol-dictionary.json
+  3. 讀取 COBOL source：{source_file_path}（行 {proc_start} 到 {proc_end}）
+  4. 讀取 skeleton：{skeleton_path}
 
-#### 4d. 畫面解析（AI）— 僅 INTERACTIVE
+  翻譯 PROCEDURE DIVISION，按 logic-translator.md 的規則。
+  如果超過 500 行，分批翻譯（每批 ~500 行）。
 
-讀取 `/Users/ian/.claude/skills/cobol-spec/references/screen-analyzer.md`。
+  翻譯完成後，將結果寫入以下檔案：
+  output/{program_id}/{program_id}_logic.md
 
-1. 用 `dds_parser.py --dspf` 解析 Display File（PATH A）或結合 DSPFFD 資料（PATH B）
-2. 結合 COBOL 程式中的畫面處理段落
-3. 產出畫面相關內容（歸入 Section 6.3 資料處理邏輯）
+  檔案格式：
+  ## 6.1 業務規則
+  {從翻譯中提取}
 
-#### 4e. 參數介面（自動）— 所有類型
+  ## 6.2 檢核規則
+  {從翻譯中提取}
 
-從 skeleton.linkage 直接提取，加上 LDA 分析（若有）。
-產出 Section 3。
+  ## 6.3 資料處理邏輯
+  {主要段落翻譯}
 
-#### 4f. ERD 圖表（自動）— 2+ 檔案時
+  ## 6.4 檔案 I/O
+  {檔案操作摘要表}
 
-**PATH B**：使用 fetcher JSON 的 `referenced_files[].relations`（DSPDBR 精確資料）
-**PATH A**：從程式邏輯中的檔案讀寫關係推斷
+  ## 6.5 CALL 模組邏輯
+  {CALL 相關邏輯}
 
-產出 Section 7.1 的 Mermaid ERD 圖。
+  ## 6.6 例外處理
+  {錯誤處理}
 
-#### 4g. CL 前處理（AI）— 有 CL 時
+  ## flowchart
+  ```mermaid
+  flowchart TD
+      {程式流程圖}
+  ```
 
-分析 CL 程式邏輯（環境設定、OVRDBF、CALL PGM 等）。
-可整合進 Section 6 的資料處理邏輯。
+  完成後回報：已寫入 {檔案路徑}，共 {行數} 行。
+```
 
-### Step B5: 組裝 7 章節規格書（分段寫入）
+#### Agent 2: 副程式分析（有 CALL 時）
 
-**重要：此步驟由 AI 直接完成，沒有對應的 Python 腳本。不要嘗試呼叫 assemble_spec.py 或任何組裝腳本 — 它不存在。**
+```
+subagent_type: "general-purpose"
+prompt: |
+  你是 COBOL 副程式分析專家。請完成以下任務：
 
-**防 timeout 機制：必須分段寫入，禁止一次輸出完整 spec。**
+  1. 讀取分析規則：/Users/ian/.claude/skills/cobol-spec/references/callsite-analyzer.md
+  2. 讀取 COBOL source：{source_file_path}
+  3. 讀取 skeleton：{skeleton_path}
+  {PATH B 時加上：4. 讀取 fetcher JSON：{fetcher_path}，取 referenced_programs}
 
-AI 讀取模板和術語對照表，將 Step B4 的分析結果**分段**組裝成 Markdown 規格書：
+  對每個 CALL 目標分析，產出表格寫入：
+  output/{program_id}/{program_id}_calls.md
 
-- 模板：`/Users/ian/.claude/skills/cobol-spec/assets/spec-template.md`
-- 術語：`/Users/ian/.claude/skills/cobol-spec/assets/cobol-dictionary.json`
+  格式：
+  | # | 程式代號 | 功能說明 | 呼叫段落 | 傳入參數 | 取回結果 | 資訊來源 |
+  |---|---------|---------|---------|---------|---------|---------|
+
+  完成後回報：共 {N} 個 CALL 目標。
+```
+
+#### Agent 3: 畫面解析（僅 INTERACTIVE）
+
+```
+subagent_type: "general-purpose"
+prompt: |
+  你是 COBOL 畫面分析專家。請完成以下任務：
+
+  1. 讀取分析規則：/Users/ian/.claude/skills/cobol-spec/references/screen-analyzer.md
+  2. 讀取 COBOL source：{source_file_path}
+  3. {DDS 解析結果或 DSPFFD 資料}
+
+  分析畫面流程，產出畫面操作邏輯寫入：
+  output/{program_id}/{program_id}_screen.md
+
+  完成後回報：共 {N} 個畫面格式。
+```
+
+#### 不需要 Agent 的步驟（主對話直接做）
+
+**4c. 檔案定義**：
+- PATH B：從 fetcher JSON 的 `referenced_files[].schema` 直接提取（JSON 結構化資料，不大）
+- PATH A：執行 `dds_parser.py`（腳本輸出 JSON）
+
+**4e. 參數介面**：從 skeleton.linkage 直接提取（JSON 欄位，很小）
+
+**4f. ERD**：
+- PATH B：從 fetcher JSON 的 `referenced_files[].relations` 直接產生 Mermaid ERD
+- PATH A：從 skeleton.files 推斷
+
+---
+
+#### Agent 執行策略
+
+```
+主對話
+  │
+  ├── 啟動 Agent 1（邏輯翻譯）──→ 寫入 _logic.md     ← 最重，先啟動
+  ├── 啟動 Agent 2（副程式分析）──→ 寫入 _calls.md    ← 有 CALL 時
+  ├── 啟動 Agent 3（畫面分析）──→ 寫入 _screen.md     ← 僅 INTERACTIVE
+  │   （以上三個可並行）
+  │
+  ├── 同時主對話自行處理：
+  │   ├── 4c 檔案定義（從 JSON 提取）
+  │   ├── 4e 參數介面（從 skeleton 提取）
+  │   └── 4f ERD（從 JSON/skeleton）
+  │
+  ├── 等 Agent 完成
+  │
+  └── Step B5: 組裝 spec（讀 Agent 產出的 .md 檔 + 自行處理的結果）
+```
+
+---
+
+### Step B5: 組裝 7 章節規格書
+
+**重要：沒有 assemble_spec.py 腳本。不要嘗試呼叫任何組裝腳本。**
+
+**組裝方式：讀取 Agent 產出的中間檔案，分段寫入最終 spec。**
+
+模板參考：`/Users/ian/.claude/skills/cobol-spec/assets/spec-template.md`
 
 #### 分段寫入流程（必須嚴格遵守）
 
-先用 Write tool 建立檔案，寫入 Section 1-3（通常很短）：
+**第 1 步：Write 建立檔案**（Section 1-3，通常 < 50 行）
 
 ```
 Write → output/{program_id}/{program_id}_spec.md
 內容：# 標題 + Section 1 簡述 + Section 2 分類 + Section 3 參數
+來源：skeleton JSON（主對話已有）
 ```
 
-然後用 Edit tool 逐段追加：
+**第 2 步：Edit 追加 Section 4**（使用檔案清單）
 
 ```
-Edit (append) → Section 4: 使用檔案清單 + 欄位定義
-Edit (append) → Section 5: 使用程式清單
-Edit (append) → Section 6.1-6.2: 業務規則 + 檢核規則
-Edit (append) → Section 6.3: 資料處理邏輯（最長，可再拆分）
-Edit (append) → Section 6.4-6.6: 檔案 I/O + CALL 邏輯 + 例外處理
-Edit (append) → Section 7: ERD + 流程圖
+Edit (append) → Section 4
+來源：主對話的 4c 結果（dds_parser / fetcher JSON）
 ```
 
-**每次 Edit 只追加一個區塊**，避免單次輸出過大導致 API timeout。
+**第 3 步：Edit 追加 Section 5**（使用程式清單）
 
-Section 6.3（資料處理邏輯）如果超過 200 行，再拆成多次 Edit：
-- 6.3 前半（初始化 + 主迴圈段落）
-- 6.3 後半（明細處理 + 結束段落）
+```
+Edit (append) → Section 5
+來源：讀取 output/{program_id}/{program_id}_calls.md（Agent 2 產出）
+```
 
-#### 章節內容來源
+**第 4 步：Edit 追加 Section 6**（處理內容 — 最大區塊，可能需多次）
 
-| 章節 | 來源 |
-|------|------|
-| Section 1 簡述 | AI 從 skeleton + source 摘要 |
-| Section 2 分類 | skeleton.type + 判斷邏輯 |
-| Section 3 參數 | skeleton.linkage + LDA 分析（4e） |
-| Section 4 檔案 | skeleton.files + DSPFFD/dds_parser（4c） |
-| Section 5 程式 | skeleton.calls + callsite 分析（4b） |
-| Section 6 處理 | logic-translator 翻譯結果（4a），分類到 6.1-6.6 |
-| Section 7 圖表 | ERD（4f）+ 流程圖（4a） |
+```
+來源：讀取 output/{program_id}/{program_id}_logic.md（Agent 1 產出）
+
+如果 _logic.md 超過 300 行，分次追加：
+  Edit (append) → Section 6.1 + 6.2（業務規則 + 檢核）
+  Edit (append) → Section 6.3 前半
+  Edit (append) → Section 6.3 後半
+  Edit (append) → Section 6.4 + 6.5 + 6.6
+否則：
+  Edit (append) → Section 6 全部
+```
+
+**第 5 步：Edit 追加 Section 7**（圖表）
+
+```
+Edit (append) → Section 7
+來源：4f ERD（主對話已有）+ _logic.md 的 flowchart 區段（Agent 1 產出）
+```
+
+#### 中間檔案清單
+
+| 檔案 | 來源 | 用於 |
+|------|------|------|
+| `{program_id}_skeleton.json` | cobol_skeleton.py | Section 1-4 |
+| `{program_id}_logic.md` | Agent 1 | Section 6 + 7.2 |
+| `{program_id}_calls.md` | Agent 2 | Section 5 |
+| `{program_id}_screen.md` | Agent 3 | Section 6.3 |
+| `{program_id}_fetcher.json` | as400_fetcher.py | Section 4 + 5 + 7.1 |
 
 最終檔案：`output/{program_id}/{program_id}_spec.md`。
 

@@ -250,33 +250,75 @@ python3 /Users/ian/.claude/skills/cobol-spec/scripts/cobol_skeleton.py <source_f
 
 ---
 
-#### Step B4a: 計算批次（主對話）
+#### Step B4a: 計算批次 + 規模分級（主對話）
 
-從 skeleton JSON 取得 PROCEDURE DIVISION 行範圍，分成 **每批最多 300 行**：
+從 skeleton JSON 取得行範圍，按**程式規模**決定策略：
 
+```
+proc_start = skeleton 的 PROCEDURE DIVISION 起始行
+proc_end = 最後一個 paragraph 行號（或 source 總行數）
+total_proc_lines = proc_end - proc_start
+total_source_lines = skeleton 的 source_lines
+```
+
+**規模分級：**
+
+| 規模 | PROCEDURE 行數 | batch_size | 最大並行 Agent | 策略 |
+|------|---------------|------------|---------------|------|
+| S | < 500 | 300 | 全部並行 | 標準流程 |
+| M | 500-2000 | 300 | 全部並行 | 標準流程 |
+| L | 2000-5000 | 400 | 8 個/波 | 分波排隊 |
+| XL | 5000-15000 | 500 | 8 個/波 | 分波排隊 + skeleton 分割 |
+| XXL | > 15000 | 500 | 8 個/波 | 分波排隊 + skeleton 分割 + DATA DIV 分割 |
+
+**批次計算：**
 ```python
-# 虛擬碼，主對話用 skeleton JSON 手動計算
-proc_start = skeleton["procedure_division_line"]  # 或從 paragraphs 推算
-proc_end = skeleton["source_lines"]               # 或最後一個 paragraph 的行號
-total_lines = proc_end - proc_start
+if total_proc_lines <= 2000:
+    batch_size = 300
+else:
+    batch_size = 500  # 大程式用較大批次減少 Agent 數
 
-batch_size = 300
-num_batches = ceil(total_lines / batch_size)
+num_batches = ceil(total_proc_lines / batch_size)
+max_parallel = 8  # 每波最多 8 個 Agent-Logic 並行
+num_waves = ceil(num_batches / max_parallel)
+```
 
-batches = []
-for i in range(num_batches):
-    start = proc_start + i * batch_size
-    end = min(proc_start + (i+1) * batch_size, proc_end)
-    batches.append((start, end))
+**20000 行範例：**
+```
+PROCEDURE = 15000 行 → batch_size=500 → 30 batches
+DATA DIV = 5000 行
+每波 8 個 Agent → 4 波（8+8+8+6）
+Agent-Front 讀 skeleton 摘要（非完整 skeleton）
+Agent-Meta 讀 DATA DIV 前 500 行 + skeleton.files
 ```
 
 ---
 
-#### Step B4b: 派出所有 Agent（並行）
+#### Step B4b: 派出 Agent（分波並行）
 
-**所有 Agent 同時啟動，互不依賴。**
+**每波最多 8 個 Agent-Logic + 其他固定 Agent。**
+
+**第 1 波**：固定 Agent + 前 8 個 Logic Agent 一起啟動
+**第 2+ 波**：等上一波完成，再啟動下 8 個 Logic Agent
+**固定 Agent**（Front, Meta, Chart, Screen）只在第 1 波啟動
 
 ##### Agent-Front: Section 1-5（結構資料）
+
+**大程式注意**：如果 skeleton JSON 超過 200 行（段落太多），主對話先用 bash 預處理：
+```bash
+# 主對話先提取 skeleton 摘要，只保留 files, calls, linkage, type（不含 paragraphs 列表）
+python3 -c "
+import json, sys
+s = json.load(open(sys.argv[1]))
+summary = {k: s[k] for k in ['program_id','type','files','calls','linkage','has_entry','has_sql'] if k in s}
+summary['paragraph_count'] = len(s.get('paragraphs', []))
+json.dump(summary, open(sys.argv[2], 'w'), indent=2, ensure_ascii=False)
+" {skeleton_path} output/{program_id}/_skeleton_summary.json
+```
+
+如果 **檔案數量 > 15 個**，Section 4 的檔案欄位定義太大。拆成兩個 Agent：
+- Agent-Front-A: Section 1-3 + Section 4 表格（不含欄位定義）+ Section 5
+- Agent-Front-B: Section 4 檔案欄位定義（只處理檔案 schema）
 
 ```
 subagent_type: "general-purpose"
@@ -284,44 +326,44 @@ prompt: |
   你是 COBOL 規格書撰寫專家。只處理 Section 1-5（結構章節）。
 
   讀取以下檔案：
-  1. skeleton JSON：{skeleton_path}
+  1. skeleton 摘要：{skeleton_summary_path}（已過濾，只含結構資訊）
+     如果摘要不存在，讀完整 skeleton 但只看 files, calls, linkage 欄位。
   2. {PATH A: DDS parser 結果 | PATH B: fetcher JSON}
   3. 副程式分析規則：/Users/ian/.claude/skills/cobol-spec/references/callsite-analyzer.md
   4. source code 的 CALL 語句（只搜尋含 "CALL " 的行，用 Grep tool）
 
   ⚠️ 禁止讀取完整 source code。只用 Grep 搜尋 CALL 語句。
   ⚠️ 禁止讀取 cobol-dictionary.json。
+  ⚠️ 如果 DDS/fetcher 的檔案欄位定義超過 300 行，只列檔案清單表格，
+     欄位定義另外由 Agent-Front-B 處理（主對話會自動判斷）。
 
   寫入檔案 output/{program_id}/_01_front.md，內容：
-
   # {PROGRAM_ID} 程式規格書
-
-  ## 1. 簡述
-  {1-3 句商業語言描述}
-
-  ## 2. 程式分類
-  | 項目 | 說明 |
-  |------|------|
-  | 程式代號 | {ID} |
-  | 程式名稱 | {NAME} |
-  | 程式類型 | {TYPE} |
-  | 分類依據 | {WHY} |
-
-  ## 3. 參數說明
-  ### CALL USING 參數
-  {從 skeleton.linkage 提取}
-  ### LDA
-  {若有}
-
-  ## 4. 使用檔案清單
-  {從 skeleton.files + DDS/fetcher schema 提取}
-  ### 檔案欄位定義
-  {每個檔案的欄位表格}
-
-  ## 5. 使用程式清單
-  {從 skeleton.calls + callsite 分析}
+  ## 1. 簡述 ...
+  ## 2. 程式分類 ...
+  ## 3. 參數說明 ...
+  ## 4. 使用檔案清單 ...
+  ## 5. 使用程式清單 ...
 
   完成後回報檔案路徑和行數。
+```
+
+##### Agent-Front-B: Section 4 檔案欄位定義（僅大程式，檔案 > 15 個時）
+
+如果檔案太多，拆成多個 Agent-Front-B，每個處理 ~8 個檔案的欄位定義：
+
+```
+subagent_type: "general-purpose"
+prompt: |
+  你是 COBOL 檔案定義專家。只處理以下檔案的欄位定義表格。
+
+  讀取：{DDS parser 結果 或 fetcher JSON 的指定檔案}
+  只處理以下檔案：{file_list_for_this_batch}
+
+  寫入 output/{program_id}/_01_fields_{NN}.md
+  格式：每個檔案一個 #### 標題 + 欄位表格
+
+  完成後回報。
 ```
 
 ##### Agent-Logic-N: Section 6.3 邏輯翻譯（每批 300 行）
@@ -363,18 +405,25 @@ prompt: |
 
 ##### Agent-Meta: Section 6.1, 6.2, 6.4, 6.5, 6.6（非 6.3 的子章節）
 
+**大程式注意**：如果 DATA DIVISION 超過 500 行，Agent-Meta 不讀完整 DATA DIV。
+改為：只讀 skeleton JSON + 用 Grep 搜尋關鍵模式（88-level、FILE STATUS、CHECK-、VALID-）。
+
 ```
 subagent_type: "general-purpose"
 prompt: |
   你是 COBOL 規格書撰寫專家。負責 Section 6 中除了 6.3 以外的子章節。
 
   讀取以下檔案：
-  1. skeleton JSON：{skeleton_path}
-  2. source code 的 ENVIRONMENT DIVISION + DATA DIVISION
-     （用 Read tool 只讀行 1 到 {proc_start}，不讀 PROCEDURE DIVISION）
-  {PATH B: 3. fetcher JSON 的 referenced_files}
+  1. skeleton 摘要或完整 skeleton：{skeleton_path_or_summary}
+  {PATH B: 2. fetcher JSON 的 referenced_files 欄位}
 
-  ⚠️ 禁止讀取 PROCEDURE DIVISION（那是 Agent-Logic 的工作）。
+  用 Grep tool 搜尋 source code（不要 Read 完整檔案）：
+  - Grep "88 " {source_path} → 88-level 條件名（業務規則）
+  - Grep "FILE STATUS" {source_path} → File Status 變數
+  - Grep "CHECK-|VALID-|ERR-|ERROR-" {source_path} → 檢核/錯誤段落名
+
+  ⚠️ 禁止讀取完整 source code。只用 Grep 搜尋。
+  ⚠️ 禁止讀取 PROCEDURE DIVISION。
   ⚠️ 禁止讀取任何 references/*.md。
 
   產出兩個檔案：
@@ -384,25 +433,22 @@ prompt: |
   ## 6. 處理內容
 
   ### 6.1 業務規則
-  {從 skeleton 的 88-level 條件名、段落名推斷商業規則}
-  {從 DATA DIVISION 的條件變數推斷}
+  {從 88-level 條件名、段落名推斷}
 
   ### 6.2 檢核規則
-  {從 skeleton 的段落名如 CHECK-xxx, VALID-xxx 推斷}
-  {從 DATA DIVISION 的 PIC 格式推斷欄位驗證}
+  {從 CHECK/VALID 段落名 + PIC 格式推斷}
 
   檔案 2: output/{program_id}/_03_sec6_bottom.md
   內容：
   ### 6.4 檔案 I/O
   | 操作 | 檔案 | KEY | 條件 | File Status 處理 |
-  |------|------|-----|------|-----------------|
   {從 skeleton.files 提取}
 
   ### 6.5 CALL 模組邏輯
-  {從 skeleton.calls 提取呼叫時機}
+  {從 skeleton.calls 提取}
 
   ### 6.6 例外處理
-  {從 skeleton.file_status + error paragraphs 推斷}
+  {從 FILE STATUS grep 結果推斷}
 
   完成後回報兩個檔案路徑。
 ```
@@ -509,42 +555,61 @@ cat _03_sec6_bottom.md _04_chart.md >> {program_id}_spec.md
 
 #### 完整流程圖
 
+**S/M 規模（< 2000 行 PROCEDURE）— 全部並行：**
 ```
-主對話（調度員，context < 200 行）
+主對話（調度員）
+  ├── skeleton.json
+  ├── 並行：Front + Logic-01~07 + Meta + Chart + Screen
+  ├── 等完成 → bash cat → spec.md
+  └── validate → html
+```
+
+**L/XL/XXL 規模（> 2000 行）— 分波排隊：**
+```
+主對話（調度員）
+  ├── skeleton.json → 提取 _skeleton_summary.json
   │
-  ├── 跑 Python 腳本 → skeleton.json（50 行）
-  ├── 計算批次（300 行/批）
+  ├── 第 1 波（並行）：
+  │   ├── Front + Meta + Chart + Screen（固定 Agent）
+  │   └── Logic-01 ~ Logic-08（最多 8 個）
   │
-  ├── 並行派出 Agent：
-  │   ├── Agent-Front    → _01_front.md      （Section 1-5）
-  │   ├── Agent-Logic-01 → _02_logic_01.md   （行 1-300 翻譯）
-  │   ├── Agent-Logic-02 → _02_logic_02.md   （行 301-600 翻譯）
-  │   ├── Agent-Logic-03 → _02_logic_03.md   （行 601-900 翻譯）
-  │   ├── Agent-Meta     → _03_sec6_top.md   （6.1 + 6.2）
-  │   │                  → _03_sec6_bottom.md（6.4 + 6.5 + 6.6）
-  │   ├── Agent-Chart    → _04_chart.md      （Section 7）
-  │   └── Agent-Screen   → _02_screen.md     （僅 INTERACTIVE）
+  ├── 等第 1 波完成
   │
-  ├── 等所有 Agent 完成
+  ├── 第 2 波（並行）：Logic-09 ~ Logic-16
+  ├── 等第 2 波完成
   │
-  ├── bash cat 組裝 → {program_id}_spec.md
+  ├── ... 直到所有 Logic batch 完成
   │
-  ├── spec_validator.py 驗證
-  │
-  └── md2html.py → HTML
+  ├── bash cat → spec.md
+  └── validate → html
 ```
 
 #### 每個 Agent 的 context 預算
 
-| Agent | 讀取量 | 輸出量 | 合計 | 安全？ |
-|-------|--------|--------|------|--------|
-| Agent-Front | skeleton(50) + DDS/fetcher(200) + callsite-analyzer(150) | ~200 | ~600 | ✅ |
-| Agent-Logic-N | logic-translator(400) + source chunk(300) | ~250 | ~950 | ⚠️ 極限 |
-| Agent-Meta | skeleton(50) + DATA DIV(200) | ~150 | ~400 | ✅ |
-| Agent-Chart | skeleton(50) + relations(50) | ~50 | ~150 | ✅ |
-| Agent-Screen | screen-analyzer(200) + 畫面段落(200) | ~150 | ~550 | ✅ |
+| Agent | 讀取量（行） | 輸出量 | 合計 | 安全？ |
+|-------|-------------|--------|------|--------|
+| Agent-Front | summary(30) + DDS(200) + callsite(150) | ~200 | ~580 | ✅ |
+| Agent-Front-B | fetcher/DDS 部分(200) | ~150 | ~350 | ✅ |
+| Agent-Logic-N | logic-translator(400) + chunk(300-500) | ~250 | ~950 | ⚠️ 極限 |
+| Agent-Meta | summary(30) + Grep results(100) | ~150 | ~280 | ✅ |
+| Agent-Chart | summary(30) + relations(50) | ~50 | ~130 | ✅ |
+| Agent-Screen | screen-analyzer(200) + Grep results(200) | ~150 | ~550 | ✅ |
 
-**如果 Agent-Logic-N 仍 timeout**：把 batch_size 從 300 降到 200。
+**如果 Agent-Logic-N 仍 timeout**：把 batch_size 從 300/500 降到 200。
+
+#### 20000 行程式的實際數據
+
+```
+總行數: 20000
+DATA DIVISION: ~5000 行 → Agent-Meta 只用 Grep，不讀完整
+PROCEDURE: ~15000 行
+batch_size: 500
+batches: 30 個 Agent-Logic
+waves: 4 波（8+8+8+6）
+固定 Agent: 4-5 個（Front, Front-B, Meta, Chart, Screen）
+總 Agent 數: 34-35
+預計執行時間: 4 波 × 每波 2-3 分鐘 ≈ 10-12 分鐘
+```
 
 #### 中間檔案命名規則
 

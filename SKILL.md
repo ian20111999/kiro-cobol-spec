@@ -500,22 +500,65 @@ prompt: |
 
 ##### Agent-Screen: 畫面解析（僅 INTERACTIVE 類型）
 
+**⚠️ screen-analyzer.md 有 296 行，是最大的 reference 檔。DDS 資料可能再加 500 行。必須嚴格控制。**
+
+**Agent-Screen 不翻譯 PROCEDURE DIVISION 邏輯**（那是 Agent-Logic 的工作）。
+Agent-Screen 只負責：
+1. 畫面格式清單（哪些格式、欄位、指示器）
+2. 畫面流程摘要（格式之間的切換順序）
+3. Subfile 結構（SFL/SFLCTL 的配置）
+
+**根據 DDS 規模自動拆分：**
+
+| DDS 格式數 | 策略 |
+|-----------|------|
+| ≤ 5 格式 | 1 個 Agent-Screen |
+| 6-15 格式 | 2 個 Agent-Screen（每個處理一半格式）|
+| > 15 格式 | 3+ 個 Agent-Screen（每個最多 5 格式）|
+
+**小畫面程式（≤ 5 格式）— 1 個 Agent：**
+
 ```
 subagent_type: "general-purpose"
 prompt: |
-  你是 COBOL 畫面分析專家。
+  你是 COBOL 畫面結構分析專家。不翻譯程式邏輯（Agent-Logic 負責）。
+  你只分析畫面格式定義和畫面流程。
 
   讀取：
-  1. ${SKILL_DIR}/references/screen-analyzer.md
-  2. source code 的畫面相關段落（用 Grep 搜尋 EXFMT/WRITE.*SUBFILE/READ 等關鍵字）
-  3. DDS parser 結果或 DSPFFD 資料
+  1. ${SKILL_DIR}/references/screen-analyzer.md（只讀前 150 行的規則摘要，
+     跳過範例段落）
+  2. DDS parser 結果或 DSPFFD 資料（只處理指定的格式：{format_list}）
 
-  ⚠️ 禁止讀完整 source。只用 Grep 找畫面相關段落，再 Read 該段落。
+  ⚠️ 禁止讀取 source code。畫面邏輯由 Agent-Logic 翻譯。
+  ⚠️ 禁止讀取完整 screen-analyzer.md。只讀前 150 行。
 
-  寫入 output/{program_id}/_02_screen.md：
-  {畫面操作邏輯，會被插入 Section 6.3}
+  產出以下內容寫入 output/{program_id}/_02_screen.md：
 
-  完成後回報檔案路徑。
+  #### 畫面格式清單
+  | # | 格式名稱 | 類型 | 用途 | 關鍵欄位 | 關聯指示器 |
+  |---|---------|------|------|---------|-----------|
+
+  #### 畫面流程
+  {格式切換順序的簡要描述，如：主選單 → 查詢畫面 → 明細畫面}
+
+  #### Subfile 結構（若有）
+  | SFL 格式 | SFLCTL 格式 | SFLPAG | SFLSIZ | 用途 |
+
+  完成後回報格式數量。
+```
+
+**大畫面程式（> 5 格式）— 拆多個 Agent：**
+
+主對話先用 `dds_parser.py --dspf` 取得格式清單，分組後派出多個 Agent-Screen：
+- Agent-Screen-01: 格式 1-5 → `_02_screen_01.md`
+- Agent-Screen-02: 格式 6-10 → `_02_screen_02.md`
+- ...
+
+每個 Agent 只讀自己負責的格式的 DDS 資料，不讀全部。
+
+bash cat 組裝時：
+```bash
+cat _02_screen_*.md >> {program_id}_spec.md  # 在 Section 6.3 之後
 ```
 
 ---

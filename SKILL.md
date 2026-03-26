@@ -297,34 +297,56 @@ python3 /Users/ian/.claude/skills/cobol-spec/scripts/cobol_skeleton.py <source_f
 分析 CL 程式邏輯（環境設定、OVRDBF、CALL PGM 等）。
 可整合進 Section 6 的資料處理邏輯。
 
-### Step B5: 組裝 7 章節規格書（自動）
+### Step B5: 組裝 7 章節規格書（分段寫入）
 
 **重要：此步驟由 AI 直接完成，沒有對應的 Python 腳本。不要嘗試呼叫 assemble_spec.py 或任何組裝腳本 — 它不存在。**
 
-AI 讀取模板和術語對照表，將 Step B4 的分析結果直接組裝成 Markdown 規格書：
+**防 timeout 機制：必須分段寫入，禁止一次輸出完整 spec。**
+
+AI 讀取模板和術語對照表，將 Step B4 的分析結果**分段**組裝成 Markdown 規格書：
 
 - 模板：`/Users/ian/.claude/skills/cobol-spec/assets/spec-template.md`
 - 術語：`/Users/ian/.claude/skills/cobol-spec/assets/cobol-dictionary.json`
 
-組裝順序（7 章節）：
+#### 分段寫入流程（必須嚴格遵守）
 
-1. **Section 1 — 簡述**：1-3 句商業語言摘要
-2. **Section 2 — 程式分類**：判斷程式類型（主程式/副程式/批次/報表/畫面）
-3. **Section 3 — 參數說明**：LINKAGE SECTION + LDA（4e 產出）
-4. **Section 4 — 使用檔案清單**：檔案表格 + 欄位定義（4c 產出）
-5. **Section 5 — 使用程式清單**：副程式表格（4b 產出）
-6. **Section 6 — 處理內容**（6 子章節）：
-   - 6.1 業務規則
-   - 6.2 檢核規則
-   - 6.3 資料處理邏輯（含畫面操作）
-   - 6.4 檔案 I/O
-   - 6.5 CALL 模組邏輯
-   - 6.6 例外處理
-7. **Section 7 — 圖表**：
-   - 7.1 ERD（4f 產出）
-   - 7.2 程式流程圖（4a 產出）
+先用 Write tool 建立檔案，寫入 Section 1-3（通常很短）：
 
-存為 `output/{program_id}/{program_id}_spec.md`。
+```
+Write → output/{program_id}/{program_id}_spec.md
+內容：# 標題 + Section 1 簡述 + Section 2 分類 + Section 3 參數
+```
+
+然後用 Edit tool 逐段追加：
+
+```
+Edit (append) → Section 4: 使用檔案清單 + 欄位定義
+Edit (append) → Section 5: 使用程式清單
+Edit (append) → Section 6.1-6.2: 業務規則 + 檢核規則
+Edit (append) → Section 6.3: 資料處理邏輯（最長，可再拆分）
+Edit (append) → Section 6.4-6.6: 檔案 I/O + CALL 邏輯 + 例外處理
+Edit (append) → Section 7: ERD + 流程圖
+```
+
+**每次 Edit 只追加一個區塊**，避免單次輸出過大導致 API timeout。
+
+Section 6.3（資料處理邏輯）如果超過 200 行，再拆成多次 Edit：
+- 6.3 前半（初始化 + 主迴圈段落）
+- 6.3 後半（明細處理 + 結束段落）
+
+#### 章節內容來源
+
+| 章節 | 來源 |
+|------|------|
+| Section 1 簡述 | AI 從 skeleton + source 摘要 |
+| Section 2 分類 | skeleton.type + 判斷邏輯 |
+| Section 3 參數 | skeleton.linkage + LDA 分析（4e） |
+| Section 4 檔案 | skeleton.files + DSPFFD/dds_parser（4c） |
+| Section 5 程式 | skeleton.calls + callsite 分析（4b） |
+| Section 6 處理 | logic-translator 翻譯結果（4a），分類到 6.1-6.6 |
+| Section 7 圖表 | ERD（4f）+ 流程圖（4a） |
+
+最終檔案：`output/{program_id}/{program_id}_spec.md`。
 
 ### Step B6: 驗證（自動）
 

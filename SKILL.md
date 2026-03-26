@@ -225,221 +225,342 @@ fetcher 已將 source 存為 spool 相容的 .txt 格式。
 python3 /Users/ian/.claude/skills/cobol-spec/scripts/cobol_skeleton.py <source_file_path> --program <program_name>
 ```
 
-### Step B4 + B5: 分析 + 組裝（Agent subagent 架構）
+### Step B4 + B5: 分析 + 組裝（極細粒度 Agent 架構）
 
-**⚠️ 防 timeout 鐵律：禁止在主對話中累積大量 context。**
+**⚠️ 防 timeout 鐵律 — 任何單一 AI context 的總輸入不得超過 800 行。**
 
-**原因**：COBOL source（1000+ 行）+ reference files（logic-translator 400 行、callsite-analyzer、screen-analyzer、dictionary 400 行）+ 翻譯結果 + spec 輸出，全部累積在同一對話會超出 API 限制。
-
-**解法**：每個分析任務用 **Agent tool（subagent_type: "general-purpose"）** 獨立執行。Agent 在隔離的 context 中工作，只回傳精簡結果。主對話保持輕量。
+超過就會 API timeout。不管是主對話還是 Agent subagent 都一樣。
 
 ---
 
-#### 主對話只做三件事
+#### 主對話的角色：純調度員
 
-1. **執行 Python 腳本**（skeleton、dds_parser 等 — 輸出小的 JSON）
-2. **派出 Agent subagent** 做重分析
-3. **收到 Agent 結果後，直接寫入 spec 檔案**
+主對話只做：
+1. 執行 Python 腳本（輸出 JSON）
+2. 讀取 skeleton JSON（~50 行）計算批次
+3. 派出 Agent subagent
+4. 用 **bash cat 組裝**最終 spec
 
-**主對話禁止做的事：**
-- ❌ 讀取 `references/logic-translator.md`（400 行）
-- ❌ 讀取 `references/callsite-analyzer.md`
-- ❌ 讀取 `references/screen-analyzer.md`
-- ❌ 讀取 `assets/cobol-dictionary.json`（400 行）
-- ❌ 直接讀取完整 COBOL source code
-- ❌ 在主對話中做邏輯翻譯
-
-這些全部交給 Agent subagent。
+**主對話絕對禁止：**
+- ❌ 讀取任何 `references/*.md` 檔案
+- ❌ 讀取 `assets/cobol-dictionary.json`
+- ❌ 讀取 COBOL source code
+- ❌ 做邏輯翻譯
+- ❌ 用 Write/Edit 寫 spec 內容（改用 bash cat）
 
 ---
 
-#### Agent 1: 邏輯翻譯（最重 — 必須隔離）
+#### Step B4a: 計算批次（主對話）
 
-用 Agent tool 啟動，prompt 包含：
+從 skeleton JSON 取得 PROCEDURE DIVISION 行範圍，分成 **每批最多 300 行**：
+
+```python
+# 虛擬碼，主對話用 skeleton JSON 手動計算
+proc_start = skeleton["procedure_division_line"]  # 或從 paragraphs 推算
+proc_end = skeleton["source_lines"]               # 或最後一個 paragraph 的行號
+total_lines = proc_end - proc_start
+
+batch_size = 300
+num_batches = ceil(total_lines / batch_size)
+
+batches = []
+for i in range(num_batches):
+    start = proc_start + i * batch_size
+    end = min(proc_start + (i+1) * batch_size, proc_end)
+    batches.append((start, end))
+```
+
+---
+
+#### Step B4b: 派出所有 Agent（並行）
+
+**所有 Agent 同時啟動，互不依賴。**
+
+##### Agent-Front: Section 1-5（結構資料）
 
 ```
 subagent_type: "general-purpose"
 prompt: |
-  你是 COBOL 邏輯翻譯專家。請完成以下任務：
+  你是 COBOL 規格書撰寫專家。只處理 Section 1-5（結構章節）。
 
-  1. 讀取翻譯規則：/Users/ian/.claude/skills/cobol-spec/references/logic-translator.md
-  2. 讀取術語表：/Users/ian/.claude/skills/cobol-spec/assets/cobol-dictionary.json
-  3. 讀取 COBOL source：{source_file_path}（行 {proc_start} 到 {proc_end}）
-  4. 讀取 skeleton：{skeleton_path}
+  讀取以下檔案：
+  1. skeleton JSON：{skeleton_path}
+  2. {PATH A: DDS parser 結果 | PATH B: fetcher JSON}
+  3. 副程式分析規則：/Users/ian/.claude/skills/cobol-spec/references/callsite-analyzer.md
+  4. source code 的 CALL 語句（只搜尋含 "CALL " 的行，用 Grep tool）
 
-  翻譯 PROCEDURE DIVISION，按 logic-translator.md 的規則。
-  如果超過 500 行，分批翻譯（每批 ~500 行）。
+  ⚠️ 禁止讀取完整 source code。只用 Grep 搜尋 CALL 語句。
+  ⚠️ 禁止讀取 cobol-dictionary.json。
 
-  翻譯完成後，將結果寫入以下檔案：
-  output/{program_id}/{program_id}_logic.md
+  寫入檔案 output/{program_id}/_01_front.md，內容：
 
-  檔案格式：
-  ## 6.1 業務規則
-  {從翻譯中提取}
+  # {PROGRAM_ID} 程式規格書
 
-  ## 6.2 檢核規則
-  {從翻譯中提取}
+  ## 1. 簡述
+  {1-3 句商業語言描述}
 
-  ## 6.3 資料處理邏輯
-  {主要段落翻譯}
+  ## 2. 程式分類
+  | 項目 | 說明 |
+  |------|------|
+  | 程式代號 | {ID} |
+  | 程式名稱 | {NAME} |
+  | 程式類型 | {TYPE} |
+  | 分類依據 | {WHY} |
 
-  ## 6.4 檔案 I/O
-  {檔案操作摘要表}
+  ## 3. 參數說明
+  ### CALL USING 參數
+  {從 skeleton.linkage 提取}
+  ### LDA
+  {若有}
 
-  ## 6.5 CALL 模組邏輯
-  {CALL 相關邏輯}
+  ## 4. 使用檔案清單
+  {從 skeleton.files + DDS/fetcher schema 提取}
+  ### 檔案欄位定義
+  {每個檔案的欄位表格}
 
-  ## 6.6 例外處理
-  {錯誤處理}
+  ## 5. 使用程式清單
+  {從 skeleton.calls + callsite 分析}
 
-  ## flowchart
+  完成後回報檔案路徑和行數。
+```
+
+##### Agent-Logic-N: Section 6.3 邏輯翻譯（每批 300 行）
+
+**每個批次獨立一個 Agent。** 大程式會有多個 Agent-Logic 並行。
+
+```
+subagent_type: "general-purpose"
+prompt: |
+  你是 COBOL 邏輯翻譯專家。只翻譯指定行範圍的段落。
+
+  讀取以下檔案：
+  1. 翻譯規則：/Users/ian/.claude/skills/cobol-spec/references/logic-translator.md
+  2. source code：{source_file_path}（只讀行 {batch_start} 到 {batch_end}）
+
+  ⚠️ 禁止讀取 cobol-dictionary.json（太大）。用以下內建術語：
+  - PERFORM = 執行段落  - READ/CHAIN = 讀取  - WRITE = 寫入
+  - REWRITE = 更新  - DELETE = 刪除  - SETLL/SETGT = 定位
+  - File Status "00"=正常 "23"=找不到 "35"=檔案不存在
+  - *INxx = 指示器  - MOVE = 設定值  - EVALUATE = 條件分支
+  - STRING/UNSTRING = 字串處理  - COMPUTE = 計算
+
+  ⚠️ 只讀指定行範圍，禁止讀完整 source。
+  ⚠️ 輸出不超過 250 行。
+
+  翻譯完成後寫入：output/{program_id}/_02_logic_{NN}.md
+  （{NN} = 批次編號，01, 02, 03...）
+
+  格式：每個段落一個 #### 標題，下方用編號列表描述邏輯。
+  範例：
+  #### MAIN-PROCESS（主處理）
+  1. 開啟所有檔案
+  2. 執行 INIT-ROUTINE 初始化
+  3. PERFORM PROCESS-LOOP UNTIL END-FLAG = "Y"
+  4. 關閉所有檔案，結束程式
+
+  完成後回報：已翻譯 {N} 個段落，寫入 {檔案路徑}。
+```
+
+##### Agent-Meta: Section 6.1, 6.2, 6.4, 6.5, 6.6（非 6.3 的子章節）
+
+```
+subagent_type: "general-purpose"
+prompt: |
+  你是 COBOL 規格書撰寫專家。負責 Section 6 中除了 6.3 以外的子章節。
+
+  讀取以下檔案：
+  1. skeleton JSON：{skeleton_path}
+  2. source code 的 ENVIRONMENT DIVISION + DATA DIVISION
+     （用 Read tool 只讀行 1 到 {proc_start}，不讀 PROCEDURE DIVISION）
+  {PATH B: 3. fetcher JSON 的 referenced_files}
+
+  ⚠️ 禁止讀取 PROCEDURE DIVISION（那是 Agent-Logic 的工作）。
+  ⚠️ 禁止讀取任何 references/*.md。
+
+  產出兩個檔案：
+
+  檔案 1: output/{program_id}/_03_sec6_top.md
+  內容：
+  ## 6. 處理內容
+
+  ### 6.1 業務規則
+  {從 skeleton 的 88-level 條件名、段落名推斷商業規則}
+  {從 DATA DIVISION 的條件變數推斷}
+
+  ### 6.2 檢核規則
+  {從 skeleton 的段落名如 CHECK-xxx, VALID-xxx 推斷}
+  {從 DATA DIVISION 的 PIC 格式推斷欄位驗證}
+
+  檔案 2: output/{program_id}/_03_sec6_bottom.md
+  內容：
+  ### 6.4 檔案 I/O
+  | 操作 | 檔案 | KEY | 條件 | File Status 處理 |
+  |------|------|-----|------|-----------------|
+  {從 skeleton.files 提取}
+
+  ### 6.5 CALL 模組邏輯
+  {從 skeleton.calls 提取呼叫時機}
+
+  ### 6.6 例外處理
+  {從 skeleton.file_status + error paragraphs 推斷}
+
+  完成後回報兩個檔案路徑。
+```
+
+##### Agent-Chart: Section 7（圖表）
+
+```
+subagent_type: "general-purpose"
+prompt: |
+  你是 Mermaid 圖表專家。負責產生 ERD 和流程圖。
+
+  讀取 skeleton JSON：{skeleton_path}
+  {PATH B: 讀取 fetcher JSON 的 referenced_files[].relations}
+
+  ⚠️ 禁止讀取 source code。只用 skeleton 結構。
+
+  寫入 output/{program_id}/_04_chart.md：
+
+  ## 7. 圖表
+
+  ### 7.1 資料關聯圖（ERD）
   ```mermaid
-  flowchart TD
-      {程式流程圖}
+  erDiagram
+      {從 skeleton.files + relations 產生}
   ```
 
-  完成後回報：已寫入 {檔案路徑}，共 {行數} 行。
+  ### 7.2 程式流程圖
+  ```mermaid
+  flowchart TD
+      {從 skeleton.paragraphs 的呼叫關係產生}
+  ```
+
+  完成後回報檔案路徑。
 ```
 
-#### Agent 2: 副程式分析（有 CALL 時）
-
-```
-subagent_type: "general-purpose"
-prompt: |
-  你是 COBOL 副程式分析專家。請完成以下任務：
-
-  1. 讀取分析規則：/Users/ian/.claude/skills/cobol-spec/references/callsite-analyzer.md
-  2. 讀取 COBOL source：{source_file_path}
-  3. 讀取 skeleton：{skeleton_path}
-  {PATH B 時加上：4. 讀取 fetcher JSON：{fetcher_path}，取 referenced_programs}
-
-  對每個 CALL 目標分析，產出表格寫入：
-  output/{program_id}/{program_id}_calls.md
-
-  格式：
-  | # | 程式代號 | 功能說明 | 呼叫段落 | 傳入參數 | 取回結果 | 資訊來源 |
-  |---|---------|---------|---------|---------|---------|---------|
-
-  完成後回報：共 {N} 個 CALL 目標。
-```
-
-#### Agent 3: 畫面解析（僅 INTERACTIVE）
+##### Agent-Screen: 畫面解析（僅 INTERACTIVE 類型）
 
 ```
 subagent_type: "general-purpose"
 prompt: |
-  你是 COBOL 畫面分析專家。請完成以下任務：
+  你是 COBOL 畫面分析專家。
 
-  1. 讀取分析規則：/Users/ian/.claude/skills/cobol-spec/references/screen-analyzer.md
-  2. 讀取 COBOL source：{source_file_path}
-  3. {DDS 解析結果或 DSPFFD 資料}
+  讀取：
+  1. /Users/ian/.claude/skills/cobol-spec/references/screen-analyzer.md
+  2. source code 的畫面相關段落（用 Grep 搜尋 EXFMT/WRITE.*SUBFILE/READ 等關鍵字）
+  3. DDS parser 結果或 DSPFFD 資料
 
-  分析畫面流程，產出畫面操作邏輯寫入：
-  output/{program_id}/{program_id}_screen.md
+  ⚠️ 禁止讀完整 source。只用 Grep 找畫面相關段落，再 Read 該段落。
 
-  完成後回報：共 {N} 個畫面格式。
-```
+  寫入 output/{program_id}/_02_screen.md：
+  {畫面操作邏輯，會被插入 Section 6.3}
 
-#### 不需要 Agent 的步驟（主對話直接做）
-
-**4c. 檔案定義**：
-- PATH B：從 fetcher JSON 的 `referenced_files[].schema` 直接提取（JSON 結構化資料，不大）
-- PATH A：執行 `dds_parser.py`（腳本輸出 JSON）
-
-**4e. 參數介面**：從 skeleton.linkage 直接提取（JSON 欄位，很小）
-
-**4f. ERD**：
-- PATH B：從 fetcher JSON 的 `referenced_files[].relations` 直接產生 Mermaid ERD
-- PATH A：從 skeleton.files 推斷
-
----
-
-#### Agent 執行策略
-
-```
-主對話
-  │
-  ├── 啟動 Agent 1（邏輯翻譯）──→ 寫入 _logic.md     ← 最重，先啟動
-  ├── 啟動 Agent 2（副程式分析）──→ 寫入 _calls.md    ← 有 CALL 時
-  ├── 啟動 Agent 3（畫面分析）──→ 寫入 _screen.md     ← 僅 INTERACTIVE
-  │   （以上三個可並行）
-  │
-  ├── 同時主對話自行處理：
-  │   ├── 4c 檔案定義（從 JSON 提取）
-  │   ├── 4e 參數介面（從 skeleton 提取）
-  │   └── 4f ERD（從 JSON/skeleton）
-  │
-  ├── 等 Agent 完成
-  │
-  └── Step B5: 組裝 spec（讀 Agent 產出的 .md 檔 + 自行處理的結果）
+  完成後回報檔案路徑。
 ```
 
 ---
 
-### Step B5: 組裝 7 章節規格書
+#### Step B5: bash cat 組裝（主對話）
 
-**重要：沒有 assemble_spec.py 腳本。不要嘗試呼叫任何組裝腳本。**
+**沒有 assemble_spec.py 腳本。組裝用 bash cat，不用 AI。**
 
-**組裝方式：讀取 Agent 產出的中間檔案，分段寫入最終 spec。**
+```bash
+cd output/{program_id}
 
-模板參考：`/Users/ian/.claude/skills/cobol-spec/assets/spec-template.md`
+# 組裝最終 spec
+cat _01_front.md > {program_id}_spec.md
 
-#### 分段寫入流程（必須嚴格遵守）
+# Section 6 top（6.1 + 6.2）
+cat _03_sec6_top.md >> {program_id}_spec.md
 
-**第 1 步：Write 建立檔案**（Section 1-3，通常 < 50 行）
+# Section 6.3 header
+echo "" >> {program_id}_spec.md
+echo "### 6.3 資料處理邏輯" >> {program_id}_spec.md
+echo "" >> {program_id}_spec.md
 
-```
-Write → output/{program_id}/{program_id}_spec.md
-內容：# 標題 + Section 1 簡述 + Section 2 分類 + Section 3 參數
-來源：skeleton JSON（主對話已有）
-```
+# Section 6.3 content（所有邏輯翻譯批次，按順序）
+cat _02_logic_01.md >> {program_id}_spec.md
+cat _02_logic_02.md >> {program_id}_spec.md  # 如果有
+cat _02_logic_03.md >> {program_id}_spec.md  # 如果有
+# ... 對所有 _02_logic_*.md 檔案
 
-**第 2 步：Edit 追加 Section 4**（使用檔案清單）
+# 畫面邏輯（如果有）
+if [ -f _02_screen.md ]; then
+  cat _02_screen.md >> {program_id}_spec.md
+fi
 
-```
-Edit (append) → Section 4
-來源：主對話的 4c 結果（dds_parser / fetcher JSON）
-```
+# Section 6 bottom（6.4 + 6.5 + 6.6）
+cat _03_sec6_bottom.md >> {program_id}_spec.md
 
-**第 3 步：Edit 追加 Section 5**（使用程式清單）
-
-```
-Edit (append) → Section 5
-來源：讀取 output/{program_id}/{program_id}_calls.md（Agent 2 產出）
-```
-
-**第 4 步：Edit 追加 Section 6**（處理內容 — 最大區塊，可能需多次）
-
-```
-來源：讀取 output/{program_id}/{program_id}_logic.md（Agent 1 產出）
-
-如果 _logic.md 超過 300 行，分次追加：
-  Edit (append) → Section 6.1 + 6.2（業務規則 + 檢核）
-  Edit (append) → Section 6.3 前半
-  Edit (append) → Section 6.3 後半
-  Edit (append) → Section 6.4 + 6.5 + 6.6
-否則：
-  Edit (append) → Section 6 全部
+# Section 7
+cat _04_chart.md >> {program_id}_spec.md
 ```
 
-**第 5 步：Edit 追加 Section 7**（圖表）
+或用一行：
+```bash
+cat _01_front.md _03_sec6_top.md > {program_id}_spec.md && \
+echo -e "\n### 6.3 資料處理邏輯\n" >> {program_id}_spec.md && \
+cat _02_logic_*.md >> {program_id}_spec.md && \
+[ -f _02_screen.md ] && cat _02_screen.md >> {program_id}_spec.md; \
+cat _03_sec6_bottom.md _04_chart.md >> {program_id}_spec.md
+```
+
+---
+
+#### 完整流程圖
 
 ```
-Edit (append) → Section 7
-來源：4f ERD（主對話已有）+ _logic.md 的 flowchart 區段（Agent 1 產出）
+主對話（調度員，context < 200 行）
+  │
+  ├── 跑 Python 腳本 → skeleton.json（50 行）
+  ├── 計算批次（300 行/批）
+  │
+  ├── 並行派出 Agent：
+  │   ├── Agent-Front    → _01_front.md      （Section 1-5）
+  │   ├── Agent-Logic-01 → _02_logic_01.md   （行 1-300 翻譯）
+  │   ├── Agent-Logic-02 → _02_logic_02.md   （行 301-600 翻譯）
+  │   ├── Agent-Logic-03 → _02_logic_03.md   （行 601-900 翻譯）
+  │   ├── Agent-Meta     → _03_sec6_top.md   （6.1 + 6.2）
+  │   │                  → _03_sec6_bottom.md（6.4 + 6.5 + 6.6）
+  │   ├── Agent-Chart    → _04_chart.md      （Section 7）
+  │   └── Agent-Screen   → _02_screen.md     （僅 INTERACTIVE）
+  │
+  ├── 等所有 Agent 完成
+  │
+  ├── bash cat 組裝 → {program_id}_spec.md
+  │
+  ├── spec_validator.py 驗證
+  │
+  └── md2html.py → HTML
 ```
 
-#### 中間檔案清單
+#### 每個 Agent 的 context 預算
 
-| 檔案 | 來源 | 用於 |
-|------|------|------|
-| `{program_id}_skeleton.json` | cobol_skeleton.py | Section 1-4 |
-| `{program_id}_logic.md` | Agent 1 | Section 6 + 7.2 |
-| `{program_id}_calls.md` | Agent 2 | Section 5 |
-| `{program_id}_screen.md` | Agent 3 | Section 6.3 |
-| `{program_id}_fetcher.json` | as400_fetcher.py | Section 4 + 5 + 7.1 |
+| Agent | 讀取量 | 輸出量 | 合計 | 安全？ |
+|-------|--------|--------|------|--------|
+| Agent-Front | skeleton(50) + DDS/fetcher(200) + callsite-analyzer(150) | ~200 | ~600 | ✅ |
+| Agent-Logic-N | logic-translator(400) + source chunk(300) | ~250 | ~950 | ⚠️ 極限 |
+| Agent-Meta | skeleton(50) + DATA DIV(200) | ~150 | ~400 | ✅ |
+| Agent-Chart | skeleton(50) + relations(50) | ~50 | ~150 | ✅ |
+| Agent-Screen | screen-analyzer(200) + 畫面段落(200) | ~150 | ~550 | ✅ |
 
-最終檔案：`output/{program_id}/{program_id}_spec.md`。
+**如果 Agent-Logic-N 仍 timeout**：把 batch_size 從 300 降到 200。
+
+#### 中間檔案命名規則
+
+```
+output/{program_id}/
+├── _01_front.md           # Agent-Front: Section 1-5
+├── _02_logic_01.md        # Agent-Logic-1: 6.3 batch 1
+├── _02_logic_02.md        # Agent-Logic-2: 6.3 batch 2
+├── _02_logic_NN.md        # Agent-Logic-N: 6.3 batch N
+├── _02_screen.md          # Agent-Screen: 畫面（optional）
+├── _03_sec6_top.md        # Agent-Meta: 6.1 + 6.2
+├── _03_sec6_bottom.md     # Agent-Meta: 6.4 + 6.5 + 6.6
+├── _04_chart.md           # Agent-Chart: Section 7
+├── {program_id}_spec.md   # 最終組裝結果
+└── {program_id}_spec.html # HTML 版
+```
 
 ### Step B6: 驗證（自動）
 

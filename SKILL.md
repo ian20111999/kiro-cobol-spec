@@ -89,6 +89,20 @@ metadata:
 💡 我目前的理解：[你的推斷]
 ```
 
+## 路徑變數
+
+本 Skill 透過以下變數定位自身目錄，**不使用硬編碼路徑**：
+
+```
+SKILL_DIR = 本 SKILL.md 所在的目錄（即 skill 根目錄）
+```
+
+**如何取得 SKILL_DIR**：在 Claude Code 中，skill 檔案被讀取時已知完整路徑。
+取 SKILL.md 所在目錄即可。例如如果 SKILL.md 在 `~/.claude/skills/cobol-spec/SKILL.md`，
+則 `SKILL_DIR = ~/.claude/skills/cobol-spec`。
+
+後續所有路徑均使用 `${SKILL_DIR}/` 為前綴。
+
 ## 可用腳本
 
 | 腳本 | 功能 | CLI 用法 |
@@ -104,7 +118,7 @@ metadata:
 | `scripts/as400_connector.py` | AS/400 連線管理 | `python3 as400_connector.py --test / --setup / --run-cl "..."` |
 | `scripts/as400_fetcher.py` | AS/400 資料撈取 | `python3 as400_fetcher.py <program_name> [--output file.json]` |
 
-所有腳本路徑前綴：`/Users/ian/.claude/skills/cobol-spec/scripts/`
+所有腳本路徑前綴：`${SKILL_DIR}/scripts/`
 所有腳本均支援 `--help`。
 
 ## 工作流程
@@ -127,7 +141,7 @@ metadata:
 ### Step A1: 前處理（自動）
 
 ```bash
-python3 /Users/ian/.claude/skills/cobol-spec/scripts/format_normalizer.py <spool_file> --json
+python3 ${SKILL_DIR}/scripts/format_normalizer.py <spool_file> --json
 ```
 
 - 偵測編碼（Big5 / UTF-8）
@@ -138,7 +152,7 @@ python3 /Users/ian/.claude/skills/cobol-spec/scripts/format_normalizer.py <spool
 ### Step A2: Spool 拆解（自動）
 
 ```bash
-python3 /Users/ian/.claude/skills/cobol-spec/scripts/spool_splitter.py <spool_file>
+python3 ${SKILL_DIR}/scripts/spool_splitter.py <spool_file>
 ```
 
 產出 JSON inventory（DDS/COBOL/CL 區塊 + 行號範圍）。
@@ -147,7 +161,7 @@ python3 /Users/ian/.claude/skills/cobol-spec/scripts/spool_splitter.py <spool_fi
 ### Step A3: 骨架解析（自動）
 
 ```bash
-python3 /Users/ian/.claude/skills/cobol-spec/scripts/cobol_skeleton.py <spool_file> --program <program_name>
+python3 ${SKILL_DIR}/scripts/cobol_skeleton.py <spool_file> --program <program_name>
 ```
 
 產出 JSON skeleton（files, paragraphs, calls, linkage, type）。
@@ -158,7 +172,7 @@ python3 /Users/ian/.claude/skills/cobol-spec/scripts/cobol_skeleton.py <spool_fi
 嘗試偵測 AS/400 連線：
 
 ```bash
-python3 /Users/ian/.claude/skills/cobol-spec/scripts/as400_connector.py --test
+python3 ${SKILL_DIR}/scripts/as400_connector.py --test
 ```
 
 | 結果 | 動作 |
@@ -188,7 +202,7 @@ fetcher.get_program_text(library, program)   # DSPOBJD TEXT
 ### Step B1: AS/400 連線（自動）
 
 ```bash
-python3 /Users/ian/.claude/skills/cobol-spec/scripts/as400_connector.py --test
+python3 ${SKILL_DIR}/scripts/as400_connector.py --test
 ```
 
 連線偵測順序：SSH → ODBC → ibm_db
@@ -203,7 +217,7 @@ python3 /Users/ian/.claude/skills/cobol-spec/scripts/as400_connector.py --test
 ### Step B2: 資料撈取（自動）
 
 ```bash
-python3 /Users/ian/.claude/skills/cobol-spec/scripts/as400_fetcher.py <program_name> --output /tmp/fetcher_result.json
+python3 ${SKILL_DIR}/scripts/as400_fetcher.py <program_name> --output /tmp/fetcher_result.json
 ```
 
 fetcher 會自動：
@@ -222,7 +236,7 @@ fetcher 已將 source 存為 spool 相容的 .txt 格式。
 
 執行 cobol_skeleton.py 解析程式結構：
 ```bash
-python3 /Users/ian/.claude/skills/cobol-spec/scripts/cobol_skeleton.py <source_file_path> --program <program_name>
+python3 ${SKILL_DIR}/scripts/cobol_skeleton.py <source_file_path> --program <program_name>
 ```
 
 ### Step B4 + B5: 分析 + 組裝（極細粒度 Agent 架構）
@@ -329,7 +343,7 @@ prompt: |
   1. skeleton 摘要：{skeleton_summary_path}（已過濾，只含結構資訊）
      如果摘要不存在，讀完整 skeleton 但只看 files, calls, linkage 欄位。
   2. {PATH A: DDS parser 結果 | PATH B: fetcher JSON}
-  3. 副程式分析規則：/Users/ian/.claude/skills/cobol-spec/references/callsite-analyzer.md
+  3. 副程式分析規則：${SKILL_DIR}/references/callsite-analyzer.md
   4. source code 的 CALL 語句（只搜尋含 "CALL " 的行，用 Grep tool）
 
   ⚠️ 禁止讀取完整 source code。只用 Grep 搜尋 CALL 語句。
@@ -376,7 +390,7 @@ prompt: |
   你是 COBOL 邏輯翻譯專家。只翻譯指定行範圍的段落。
 
   讀取以下檔案：
-  1. 翻譯規則：/Users/ian/.claude/skills/cobol-spec/references/logic-translator.md
+  1. 翻譯規則：${SKILL_DIR}/references/logic-translator.md
   2. source code：{source_file_path}（只讀行 {batch_start} 到 {batch_end}）
 
   ⚠️ 禁止讀取 cobol-dictionary.json（太大）。用以下內建術語：
@@ -492,7 +506,7 @@ prompt: |
   你是 COBOL 畫面分析專家。
 
   讀取：
-  1. /Users/ian/.claude/skills/cobol-spec/references/screen-analyzer.md
+  1. ${SKILL_DIR}/references/screen-analyzer.md
   2. source code 的畫面相關段落（用 Grep 搜尋 EXFMT/WRITE.*SUBFILE/READ 等關鍵字）
   3. DDS parser 結果或 DSPFFD 資料
 
@@ -630,7 +644,7 @@ output/{program_id}/
 ### Step B6: 驗證（自動）
 
 ```bash
-python3 /Users/ian/.claude/skills/cobol-spec/scripts/spec_validator.py \
+python3 ${SKILL_DIR}/scripts/spec_validator.py \
   output/{program_id}/{program_id}_spec.md \
   output/{program_id}/{program}_skeleton.json
 ```
@@ -642,7 +656,7 @@ python3 /Users/ian/.claude/skills/cobol-spec/scripts/spec_validator.py \
 ### Step B7: 產出 HTML + 交付
 
 ```bash
-python3 /Users/ian/.claude/skills/cobol-spec/scripts/md2html.py output/{program_id}/{program_id}_spec.md
+python3 ${SKILL_DIR}/scripts/md2html.py output/{program_id}/{program_id}_spec.md
 ```
 
 把完整 spec 給使用者看。使用者反饋 → 修改 → 再給。直到 OK。
@@ -656,7 +670,7 @@ python3 /Users/ian/.claude/skills/cobol-spec/scripts/md2html.py output/{program_
 ### B1. 批次掃描
 
 ```bash
-python3 /Users/ian/.claude/skills/cobol-spec/scripts/batch_inventory.py <directory_or_files>
+python3 ${SKILL_DIR}/scripts/batch_inventory.py <directory_or_files>
 ```
 
 ### B2. 逐支處理
